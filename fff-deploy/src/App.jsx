@@ -1,9 +1,6 @@
 import{useState,useEffect,useRef,useCallback}from"react";
-import{loadGlobal,saveGlobal,loadManager,saveManager,listenGlobal}from"./firebase.js";
-import{getFreedomBalance,transferToEscrow,requestPayout}from"./solana.js";
 const TCA="DGNPSiTrX5xnKcpVKBaXUsWBZbFuA2cJcb7fUJmoAJrd";
 const ESC="GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
-const PRIZE_PCT=0.10;
 const ftf=n=>n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1e3?`${Math.round(n/1e3)}K`:`${Math.round(n)}`;
 const rnd=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -429,9 +426,7 @@ const NAVS=[
 export default function FFF(){
   const[G,setG]=useState(buildState);
   const[view,setView]=useState("dash");
-  const[wallet,setWallet]=useState({on:false,addr:null,balance:0,loading:false});
-  const[fbLoaded,setFbLoaded]=useState(false);
-  const[txPending,setTxPending]=useState(false);
+  const[wallet,setWallet]=useState({on:false,addr:null});
   const[toast,setToast]=useState(null);
   const[match,setMatch]=useState(null);
   const[strat,setStrat]=useState({fm:"4-3-3",tac:"Balanced",mot:"Standard"});
@@ -451,117 +446,35 @@ export default function FFF(){
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
 
-  // Load global state from Firebase on mount
-  useEffect(()=>{
-    const unsub=listenGlobal((data)=>{
-      if(!data)return;
-      setG(g=>{
-        const newClubs=g.clubs.map(c=>{
-          const fb=data.clubs?.[c.id];
-          if(!fb)return c;
-          return{...c,...fb};
-        });
-        const newPlayers=g.players.map(p=>{
-          const fb=data.players?.[p.id];
-          if(!fb)return p;
-          return{...p,...fb};
-        });
-        return{...g,
-          clubs:newClubs,players:newPlayers,
-          week:data.week||g.week,season:data.season||g.season,
-          prizePool:data.prizePool||g.prizePool,
-          purchaseOrder:data.purchaseOrder||g.purchaseOrder,
-        };
-      });
-      setFbLoaded(true);
-    });
-    return()=>unsub();
-  },[]);
-
-  // Refresh wallet balance every 30s
-  useEffect(()=>{
-    if(!wallet.addr)return;
-    const refresh=async()=>{
-      const bal=await getFreedomBalance(wallet.addr);
-      setWallet(w=>({...w,balance:bal}));
-    };
-    refresh();
-    const t=setInterval(refresh,30000);
-    return()=>clearInterval(t);
-  },[wallet.addr]);
-
   const myClub=G.clubs.find(c=>c.id===G.myClubId)||null;
   const myPls=G.players.filter(p=>p.clubId===G.myClubId);
   const listedPls=G.players.filter(p=>p.listed&&p.clubId!==G.myClubId&&p.clubId!=="free");
   const freePls=G.players.filter(p=>p.clubId==="free");
 
   const notify=(msg,type="i")=>{setToast({msg,type});clearTimeout(toRef.current);toRef.current=setTimeout(()=>setToast(null),3500);};
-
-  // Real FREEDOM token spend — transfers to escrow on-chain
-  const spend=async(amt,lbl,mut)=>{
-    if(!wallet.on||!wallet.addr){notify("Connect Phantom wallet first!","e");return false;}
-    if(wallet.balance<amt){notify(`Insufficient FREEDOM tokens! Need ${ftf(amt)} FT, have ${ftf(wallet.balance)} FT`,"e");return false;}
-    setTxPending(true);
-    notify(`Sending ${ftf(amt)} FT to escrow… confirm in Phantom 🟣`,"i");
-    try{
-      const fee=Math.floor(amt*PRIZE_PCT);
-      const result=await transferToEscrow(wallet.addr,amt);
-      if(!result.success){notify(`Transaction failed: ${result.error}`,"e");setTxPending(false);return false;}
-      // Update local state
-      const newState=mut?mut({...G}):G;
-      newState.prizePool=(newState.prizePool||0)+fee;
-      setG({...newState});
-      // Persist to Firebase
-      await saveGlobal({
-        clubs:Object.fromEntries(newState.clubs.map(c=>[c.id,{ownedBy:c.ownedBy,pts:c.pts,wins:c.wins,draws:c.draws,losses:c.losses,gf:c.gf,ga:c.ga,fp:c.fp,fL:c.fL}])),
-        players:Object.fromEntries(newState.players.filter(p=>p.clubId!=='free').map(p=>[p.id,{clubId:p.clubId,listed:p.listed,listPrice:p.listPrice,injured:p.injured,injuryWeeks:p.injuryWeeks,cond:p.cond,morale:p.morale,trainings:p.trainings}])),
-        prizePool:newState.prizePool,
-        week:newState.week,season:newState.season,
-        purchaseOrder:newState.purchaseOrder||0,
-      });
-      // Refresh balance
-      const newBal=await getFreedomBalance(wallet.addr);
-      setWallet(w=>({...w,balance:newBal}));
-      notify(`✅ ${lbl} — ${ftf(amt)} FT sent`,"s");
-      setTxPending(false);return true;
-    }catch(e){
-      notify(`Error: ${e.message}`,"e");setTxPending(false);return false;
-    }
+  const spend=(amt,lbl,mut)=>{
+    if(G.tokens<amt){notify("Insufficient FREEDOM tokens!","e");return false;}
+    const fee=Math.floor(amt*.1);
+    setG(g=>{const n={...g,tokens:g.tokens-amt,prizePool:g.prizePool+fee};return mut?mut(n):n;});
+    notify(`-${ftf(amt)} FT · ${lbl}`,"s");return true;
   };
 
-  // Earn tokens — payout from escrow
-  const earn=async(amt,lbl)=>{
-    if(!wallet.addr)return;
-    notify(`Requesting ${ftf(amt)} FT payout…`,"i");
-    const result=await requestPayout(wallet.addr,amt,lbl);
-    if(result.success){
-      const newBal=await getFreedomBalance(wallet.addr);
-      setWallet(w=>({...w,balance:newBal}));
-      notify(`+${ftf(amt)} FT · ${lbl}`,"s");
-    }else{
-      notify(`Payout failed: ${result.error}`,"e");
-    }
-  };
-
-  const buyClub=async(club)=>{
+  const buyClub=(club)=>{
     if(G.myClubId){notify("You already own a club!","e");return;}
-    if(!wallet.on){notify("Connect Phantom first!","e");return;}
-    const po=(G.purchaseOrder||0)+1;
+    if(!spend(club.price,`Bought ${club.name}`))return;
+    const po=G.purchaseOrder+1;
     const fl=po<=20?"FPL":po<=40?"FCH":"FCL";
-    const ok=await spend(club.price,`Bought ${club.name}`,g=>({...g,myClubId:club.id,purchaseOrder:po,
-      clubs:g.clubs.map(c=>c.id===club.id?{...c,ownedBy:"player",ownedByAddr:wallet.addr,fL:fl}:c)}));
-    if(ok){
-      await saveManager(wallet.addr,{myClubId:club.id,stadium:stad});
-      setView("squad");
-    }
+    setG(g=>({...g,myClubId:club.id,purchaseOrder:po,
+      clubs:g.clubs.map(c=>c.id===club.id?{...c,ownedBy:"player",fL:fl}:c)}));
+    setView("squad");
   };
 
-  const buyPlayer=async(p)=>{
+  const buyPlayer=(p)=>{
     if(!G.myClubId){notify("Buy a club first!","e");return;}
     if(myPls.length>=22){notify("Squad full! (max 22)","e");return;}
     const cost=p.listed?p.listPrice:p.price;
-    await spend(cost,`Signed ${p.name}`,g=>({...g,
-      players:g.players.map(pl=>pl.id===p.id?{...pl,clubId:G.myClubId,listed:false,morale:Math.min(100,pl.morale+10)}:pl)}));
+    if(!spend(cost,`Signed ${p.name}`))return;
+    setG(g=>({...g,players:g.players.map(pl=>pl.id===p.id?{...pl,clubId:G.myClubId,listed:false,morale:Math.min(100,pl.morale+10)}:pl)}));
   };
 
   const listForSale=(pid,price)=>{
@@ -572,46 +485,34 @@ export default function FFF(){
   };
   const delist=(pid)=>{setG(g=>({...g,players:g.players.map(p=>p.id===pid?{...p,listed:false,listPrice:0}:p)}));notify("Delisted","i");};
 
-  const trainPlayer=async(pid)=>{
+  const trainPlayer=(pid)=>{
     const p=G.players.find(x=>x.id===pid);
     if(!p||p.injured){notify("Cannot train injured player!","e");return;}
     if(p.trainings>=5){notify("Max 5 sessions/week!","e");return;}
     const inj=Math.random()<(p.trainings>=4?.10:.02);
-    const ok=await spend(1000,`Training: ${p.name}`,g=>({...g,players:g.players.map(pl=>{
+    if(!spend(1000,`Training: ${p.name}`))return;
+    setG(g=>({...g,players:g.players.map(pl=>{
       if(pl.id!==pid)return pl;
       const stats={...pl.stats};
       if(!inj){const k=Object.keys(stats)[rnd(0,5)];stats[k]=Math.min(99,stats[k]+1);}
       return{...pl,stats,cond:Math.max(30,pl.cond-rnd(3,8)),trainings:pl.trainings+1,injured:inj,injuryWeeks:inj?rnd(1,4):pl.injuryWeeks};
     })}));
-    if(ok){
-      if(inj)notify(`${p.name} injured during training! 🤕`,"e");
-      if(wallet.addr)await saveManager(wallet.addr,{
-        playerOverrides:Object.fromEntries(
-          G.players.filter(pl=>pl.clubId===G.myClubId).map(pl=>[pl.id,{cond:pl.cond,morale:pl.morale,injured:pl.injured,injuryWeeks:pl.injuryWeeks,trainings:pl.trainings,stats:pl.stats}])
-        )
-      });
-    }
+    if(inj)notify(`${p.name} injured during training! 🤕`,"e");
   };
 
-  const healPlayer=async(pid)=>{
+  const healPlayer=(pid)=>{
     const p=G.players.find(x=>x.id===pid);if(!p?.injured)return;
     const cost=p.injuryWeeks*50000;
-    await spend(cost,`Therapy: ${p.name}`,g=>({...g,
-      players:g.players.map(pl=>pl.id===pid?{...pl,injured:false,injuryWeeks:0,cond:62}:pl)}));
+    if(!spend(cost,`Therapy: ${p.name}`))return;
+    setG(g=>({...g,players:g.players.map(pl=>pl.id===pid?{...pl,injured:false,injuryWeeks:0,cond:62}:pl)}));
   };
 
-  const playMatch=async(oppId)=>{
+  const playMatch=(oppId)=>{
     if(!G.myClubId||match?.playing)return;
     if(myPls.filter(p=>!p.injured).length<11){notify("Need 11 fit players!","e");return;}
     const mot=MOTIVS.find(m=>m.l===strat.mot)||MOTIVS[0];
-    if(mot.cost>0&&wallet.balance<mot.cost){notify(`Insufficient FT! Need ${ftf(mot.cost)} FT for ${mot.l}`,"e");return;}
-    if(mot.cost>0){
-      const motResult=await transferToEscrow(wallet.addr,mot.cost);
-      if(!motResult.success){notify(`Motivation payment failed: ${motResult.error}`,"e");return;}
-      const newBal=await getFreedomBalance(wallet.addr);
-      setWallet(w=>({...w,balance:newBal}));
-      setG(g=>({...g,prizePool:g.prizePool+Math.floor(mot.cost*.1)}));
-    }
+    if(mot.cost>0&&G.tokens<mot.cost){notify("Insufficient tokens for motivation!","e");return;}
+    if(mot.cost>0)setG(g=>({...g,tokens:g.tokens-mot.cost,prizePool:g.prizePool+Math.floor(mot.cost*.1)}));
     const myR=tR(myPls,mot.b);
     const oppR=tR(G.players.filter(p=>p.clubId===oppId));
     const evs=makeEvs(myR,oppR);
@@ -628,16 +529,16 @@ export default function FFF(){
               if(!ms2)return ms2;
               const won=ms2.mySc>ms2.oppSc,draw=ms2.mySc===ms2.oppSc;
               const inc=won?STADIA[stad].inc:draw?Math.floor(STADIA[stad].inc/2):0;
-              if(inc>0&&wallet.addr){earn(inc,"Match income 🏟️");}
-              notify(won?`Victory! Payout: ${ftf(inc)} FT`:draw?"Draw!":"Defeat.",won?"s":"i");
-              // Update league standings in Firebase
-              const newClubs=G.clubs.map(c=>{
-                if(c.id===G.myClubId)return{...c,pts:c.pts+(won?3:draw?1:0),wins:c.wins+(won?1:0),draws:c.draws+(draw?1:0),losses:c.losses+((!won&&!draw)?1:0),gf:c.gf+ms2.mySc,ga:c.ga+ms2.oppSc,fp:{...c.fp,pts:c.fp.pts+(won?3:draw?1:0),w:c.fp.w+(won?1:0),d:c.fp.d+(draw?1:0),l:c.fp.l+((!won&&!draw)?1:0),gf:c.fp.gf+ms2.mySc,ga:c.fp.ga+ms2.oppSc}};
-                if(c.id===oppId)return{...c,pts:c.pts+((!won&&!draw)?3:draw?1:0),gf:c.gf+ms2.oppSc,ga:c.ga+ms2.mySc};
-                return c;
-              });
-              setG(g=>({...g,clubs:newClubs,players:g.players.map(p=>p.clubId===G.myClubId?{...p,cond:Math.max(32,p.cond-rnd(5,13)),trainings:0}:p)}));
-              saveGlobal({clubs:Object.fromEntries(newClubs.map(c=>[c.id,{ownedBy:c.ownedBy,pts:c.pts,wins:c.wins,draws:c.draws,losses:c.losses,gf:c.gf,ga:c.ga,fp:c.fp,fL:c.fL}]))});
+              if(inc>0)setG(g=>({...g,tokens:g.tokens+inc}));
+              notify(won?`Victory! +${ftf(inc)} FT`:draw?"Draw!":"Defeat.",won?"s":"i");
+              setG(g=>({...g,
+                clubs:g.clubs.map(c=>{
+                  if(c.id===G.myClubId)return{...c,pts:c.pts+(won?3:draw?1:0),wins:c.wins+(won?1:0),draws:c.draws+(draw?1:0),losses:c.losses+((!won&&!draw)?1:0),gf:c.gf+ms2.mySc,ga:c.ga+ms2.oppSc,fp:{...c.fp,pts:c.fp.pts+(won?3:draw?1:0),w:c.fp.w+(won?1:0),d:c.fp.d+(draw?1:0),l:c.fp.l+((!won&&!draw)?1:0),gf:c.fp.gf+ms2.mySc,ga:c.fp.ga+ms2.oppSc}};
+                  if(c.id===oppId)return{...c,pts:c.pts+((!won&&!draw)?3:draw?1:0),gf:c.gf+ms2.oppSc,ga:c.ga+ms2.mySc};
+                  return c;
+                }),
+                players:g.players.map(p=>p.clubId===G.myClubId?{...p,cond:Math.max(32,p.cond-rnd(5,13)),trainings:0}:p),
+              }));
               return{...ms2,playing:false,m:90};
             });
           },300);
@@ -896,10 +797,9 @@ export default function FFF(){
     if(!myClub)return<div style={{textAlign:"center",padding:"40px 0"}}><button className="btn pu" onClick={()=>setView("clubs")}>Buy a Club First</button></div>;
     const fit=myPls.filter(p=>!p.injured);
     const grpCosts={fitness:5000,skills:10000,tactics:8000};
-    const doGroup=async(type)=>{
+    const doGroup=(type)=>{
       const cost=grpCosts[type]*fit.length;
-      const ok=await spend(cost,`Group ${type} training`);
-      if(!ok)return;
+      if(!spend(cost,`Group ${type} training`))return;
       setG(g=>({...g,players:g.players.map(p=>{
         if(p.clubId!==G.myClubId||p.injured)return p;
         if(type==="fitness")return{...p,cond:Math.min(100,p.cond+8)};
@@ -1013,7 +913,7 @@ export default function FFF(){
               <div><div className="sl">WIN INCOME</div><div className="sv gd">{ftf(next.inc)} FT</div></div>
             </div>
             <div style={{fontFamily:"Orbitron",fontSize:13,color:"var(--gd)",marginBottom:10}}>Cost: {ftf(next.cost)} FT</div>
-            <button className="btn gd" disabled={G.tokens<next.cost} onClick={async()=>{const ok=await spend(next.cost,next.n);if(ok){setStad(s=>{const ns=s+1;if(wallet.addr)saveManager(wallet.addr,{stadium:ns});return ns;});}}}>Upgrade</button>
+            <button className="btn gd" disabled={G.tokens<next.cost} onClick={()=>{if(spend(next.cost,`Stadium → ${next.n}`))setStad(s=>s+1);}}>Upgrade</button>
           </div>:<div className="panel gd" style={{display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}>
             <div style={{fontSize:36,marginBottom:8}}>🏆</div>
             <div style={{fontFamily:"Orbitron",fontSize:12,color:"var(--gd)"}}>MAX TIER</div>
@@ -1356,22 +1256,14 @@ export default function FFF(){
 
   const Create=()=>{
     const preview=cf.name?{stats:(()=>{const r=clamp(Math.floor((parseFloat(cf.vM)||30)*.33+62),60,93),v=d=>clamp(r+d+rnd(-3,3),40,99);const pos=cf.pos;if(pos==="GK")return{PAC:v(-18),SHO:v(-35),PAS:v(-8),DRI:v(-12),DEF:v(-5),PHY:v(2)};if(pos==="CB")return{PAC:v(-5),SHO:v(-20),PAS:v(-2),DRI:v(-8),DEF:v(8),PHY:v(6)};if(["RB","LB"].includes(pos))return{PAC:v(2),SHO:v(-15),PAS:v(3),DRI:v(0),DEF:v(5),PHY:v(3)};if(["LW","RW"].includes(pos))return{PAC:v(8),SHO:v(4),PAS:v(2),DRI:v(8),DEF:v(-18),PHY:v(-2)};return{PAC:v(4),SHO:v(8),PAS:v(0),DRI:v(4),DEF:v(-20),PHY:v(2)};})()}:null;
-    const doCreate=async()=>{
+    const doCreate=()=>{
       if(!cf.name.trim()){notify("Enter player name!","e");return;}
       if(!G.myClubId){notify("Buy a club first!","e");return;}
       if(myPls.length>=22){notify("Squad full!","e");return;}
-      const ok=await spend(50000,`Created: ${cf.name}`);
-      if(!ok)return;
+      if(!spend(50000,`Created: ${cf.name}`))return;
       const np=mkP(cf.name,cf.pos,parseFloat(cf.vM)||30,G.myClubId,true);
       np.age=parseInt(cf.age)||24;
-      setG(prev=>{
-        const updated={...prev,players:[...prev.players,np]};
-        if(wallet.addr){
-          const customs=updated.players.filter(p=>p.isCustom&&p.clubId===G.myClubId);
-          saveManager(wallet.addr,{customPlayers:customs});
-        }
-        return updated;
-      });
+      setG(g=>({...g,players:[...g.players,np]}));
       setCf({name:"",pos:"ST",age:"24",vM:"30"});
     };
     const prvAvg=preview?Math.round(Object.values(preview.stats).reduce((s,x)=>s+x,0)/6):0;
@@ -1435,46 +1327,13 @@ export default function FFF(){
           <div className="lsub">YOU'RE NOT JUST A FAN. YOU'RE IN COMMAND.</div>
         </div>
         <div className="hr">
-          <div className="chip gd">🏆 {ftf(wallet.balance)} FT</div>
-          <div className="chip pu">🏅 Prize: {ftf(G.prizePool)} FT</div>
-          {txPending&&<div style={{padding:"5px 12px",borderRadius:8,background:"rgba(168,85,247,0.2)",border:"1px solid var(--pu)",fontSize:11,fontFamily:"Orbitron",color:"var(--pu2)",animation:"pu 1s infinite"}}>⏳ TX PENDING…</div>}
+          <div className="chip gd">🏆 {ftf(G.tokens)} FT</div>
+          <div className="chip pu">🏅 {ftf(G.prizePool)} FT</div>
           <div className={`wbtn ${wallet.on?"on":""}`} onClick={async()=>{
-            if(wallet.loading)return;
             const sol=window.solana;
-            if(!sol?.isPhantom){notify("Phantom not found! Install at phantom.app","e");return;}
-            try{
-              setWallet(w=>({...w,loading:true}));
-              const r=await sol.connect();
-              const addr=r.publicKey.toString();
-              const bal=await getFreedomBalance(addr);
-              setWallet({on:true,addr,balance:bal,loading:false});
-              notify("Wallet connected! Loading your game data…","s");
-              // Load manager profile from Firebase
-              const mgr=await loadManager(addr);
-              if(mgr?.myClubId){
-                setG(g=>{
-                  let newG={...g,myClubId:mgr.myClubId};
-                  // Restore player overrides (training, injuries etc.)
-                  if(mgr.playerOverrides){
-                    newG.players=g.players.map(p=>{
-                      const ov=mgr.playerOverrides[p.id];
-                      return ov?{...p,...ov}:p;
-                    });
-                  }
-                  // Restore custom players
-                  if(mgr.customPlayers?.length){
-                    const existingIds=new Set(newG.players.map(p=>p.id));
-                    const toAdd=mgr.customPlayers.filter(p=>!existingIds.has(p.id));
-                    newG.players=[...newG.players,...toAdd];
-                  }
-                  return newG;
-                });
-                if(mgr.stadium!=null)setStad(mgr.stadium);
-                if(mgr.strat)setStrat(mgr.strat);
-                notify(`Welcome back! Your data is loaded. 🏆`,"s");
-              }
-            }catch(e){setWallet(w=>({...w,loading:false}));notify("Connection cancelled","i");}
-          }}>{wallet.loading?"Connecting…":wallet.on?`✓ ${wallet.addr?.slice(0,4)}…${wallet.addr?.slice(-4)} | ${ftf(wallet.balance)} FT`:"🔗 Connect Phantom"}</div>
+            if(!sol?.isPhantom){notify("Phantom not found — connect on deployed site!","e");return;}
+            try{const r=await sol.connect();setWallet({on:true,addr:r.publicKey.toString()});notify("Wallet connected!","s");}catch(e){notify("Cancelled","i");}
+          }}>{wallet.on?`✓ ${wallet.addr?.slice(0,6)}…`:"🔗 Connect Phantom"}</div>
         </div>
       </div>
       <div className="lay">
