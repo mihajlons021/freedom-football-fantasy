@@ -805,7 +805,7 @@ export default function FFF(){
             <div><div style={{fontSize:10,color:"var(--mt)",marginBottom:3}}>Token CA</div>
               <div style={{fontFamily:"monospace",fontSize:10,color:"var(--pu2)",wordBreak:"break-all"}}>{TCA}</div></div>
             <div><div style={{fontSize:10,color:"var(--mt)",marginBottom:3}}>Escrow Wallet</div>
-              <div style={{fontFamily:"monospace",fontSize:10,color:"var(--gn)",wordBreak:"break-all"}}>{ESC}</div></div>
+              <div style={{fontFamily:"monospace",fontSize:10,color:"var(--gn)",wordBreak:"break-all"}}>Deposits paused for maintenance</div></div>
           </div>
         </div>
       </div>

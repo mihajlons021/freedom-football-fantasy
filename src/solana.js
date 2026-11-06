@@ -28,6 +28,8 @@ export async function getFreedomBalance(walletAddr) {
 
 // Transfer FREEDOM tokens from user wallet to escrow (purchase)
 export async function transferToEscrow(walletAddr, amountFT) {
+  // DEPOSITS_PAUSED (2026-11-06): escrow wallet compromised, do not take deposits.
+  return { success: false, error: "Deposits are temporarily paused for maintenance. No tokens were sent. Please try again later." };
   try {
     const phantom = window.solana;
     if (!phantom?.isPhantom) throw new Error('Phantom not found');
