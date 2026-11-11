@@ -1,0 +1,260 @@
+// Club and player data + helpers (moved out of App.jsx so the new UI and the match engine can share them).
+// NOTE: real club/player names are placeholders until the owner decides on licensing (see README notes).
+
+export const ftf=n=>n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1e3?`${Math.round(n/1e3)}K`:`${Math.round(n)}`;
+export const rnd=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+export const avg=p=>{const v=Object.values(p.stats);return Math.round(v.reduce((s,x)=>s+x,0)/v.length)};
+export const pcls=p=>p==="GK"?"gk":["CB","RB","LB"].includes(p)?"def":["CDM","CM","CAM"].includes(p)?"mid":"fwd";
+let uid=1;
+export const mkP=(nm,pos,vM,cid,custom=false)=>({
+  id:`p${uid++}`,name:nm,pos,clubId:cid,val:vM*1e6,price:Math.floor(vM*1e6/100),
+  stats:(()=>{const r=clamp(Math.floor(vM*.33+62),60,93),v=d=>clamp(r+d+rnd(-3,3),40,99);
+    if(pos==="GK")return{PAC:v(-18),SHO:v(-35),PAS:v(-8),DRI:v(-12),DEF:v(-5),PHY:v(2)};
+    if(pos==="CB")return{PAC:v(-5),SHO:v(-20),PAS:v(-2),DRI:v(-8),DEF:v(8),PHY:v(6)};
+    if(["RB","LB"].includes(pos))return{PAC:v(2),SHO:v(-15),PAS:v(3),DRI:v(0),DEF:v(5),PHY:v(3)};
+    if(pos==="CDM")return{PAC:v(-5),SHO:v(-8),PAS:v(5),DRI:v(2),DEF:v(5),PHY:v(5)};
+    if(pos==="CM")return{PAC:v(-2),SHO:v(-5),PAS:v(8),DRI:v(4),DEF:v(2),PHY:v(2)};
+    if(pos==="CAM")return{PAC:v(2),SHO:v(5),PAS:v(6),DRI:v(8),DEF:v(-10),PHY:v(-2)};
+    if(["LW","RW"].includes(pos))return{PAC:v(8),SHO:v(4),PAS:v(2),DRI:v(8),DEF:v(-18),PHY:v(-2)};
+    return{PAC:v(4),SHO:v(8),PAS:v(0),DRI:v(4),DEF:v(-20),PHY:v(2)};
+  })(),
+  cond:rnd(80,98),morale:rnd(68,96),injured:false,injuryWeeks:0,listed:false,listPrice:0,trainings:0,age:rnd(19,34),isCustom:custom
+});
+export const FN={GK:["Santos","Park","Volkov","Chen"],CB:["Diallo","Berg","Petrov","Reyes"],RB:["Rossi","Kim","Costa"],LB:["García","Bruno","Yilmaz"],CDM:["Ibrahim","Yang","Mensah"],CM:["Williams","Bauer","Müller"],CAM:["Lopes","Tanaka","Park"],LW:["Ndiaye","Kamara","Moro"],RW:["Gomez","Torres","Schäfer"],ST:["Adama","Silva","Kone"]};
+export const POS=["GK","CB","CB","RB","LB","CDM","CM","CAM","LW","RW","ST","CB","CM","ST","RB","LW","CM","CB"];
+export const fill=(pos,vM,cid)=>{const n=FN[pos]||FN.CM;return mkP(`${n[rnd(0,n.length-1)]} ${String.fromCharCode(65+rnd(0,25))}.`,pos,vM,cid)};
+
+export const CDEFS=[
+  {id:"mci",name:"Manchester City",lg:"Premier League",abbr:"MCI",c1:"#6CABDD",c2:"#fff",pat:"solid",vM:1600},
+  {id:"liv",name:"Liverpool",lg:"Premier League",abbr:"LIV",c1:"#C8102E",c2:"#FFD700",pat:"solid",vM:1400},
+  {id:"ars",name:"Arsenal",lg:"Premier League",abbr:"ARS",c1:"#EF0107",c2:"#fff",pat:"solid",vM:1200},
+  {id:"che",name:"Chelsea",lg:"Premier League",abbr:"CHE",c1:"#034694",c2:"#fff",pat:"solid",vM:1100},
+  {id:"mun",name:"Manchester United",lg:"Premier League",abbr:"MUN",c1:"#DA291C",c2:"#FBE122",pat:"solid",vM:900},
+  {id:"tot",name:"Tottenham",lg:"Premier League",abbr:"TOT",c1:"#132257",c2:"#fff",pat:"solid",vM:800},
+  {id:"new",name:"Newcastle United",lg:"Premier League",abbr:"NEW",c1:"#241F20",c2:"#fff",pat:"vstrip",vM:800},
+  {id:"avl",name:"Aston Villa",lg:"Premier League",abbr:"AVL",c1:"#670E36",c2:"#95BFE5",pat:"solid",vM:700},
+  {id:"whu",name:"West Ham United",lg:"Premier League",abbr:"WHU",c1:"#7A263A",c2:"#1BB1E7",pat:"solid",vM:500},
+  {id:"bha",name:"Brighton & HA",lg:"Premier League",abbr:"BHA",c1:"#0057B8",c2:"#fff",pat:"vstrip",vM:500},
+  {id:"ful",name:"Fulham",lg:"Premier League",abbr:"FUL",c1:"#CC0000",c2:"#fff",pat:"solid",vM:400},
+  {id:"wol",name:"Wolverhampton",lg:"Premier League",abbr:"WOL",c1:"#FDB913",c2:"#231F20",pat:"solid",vM:400},
+  {id:"eve",name:"Everton",lg:"Premier League",abbr:"EVE",c1:"#003399",c2:"#fff",pat:"solid",vM:400},
+  {id:"lei",name:"Leicester City",lg:"Premier League",abbr:"LEI",c1:"#003090",c2:"#FDBE11",pat:"solid",vM:400},
+  {id:"nfo",name:"Nottm Forest",lg:"Premier League",abbr:"NFO",c1:"#DD0000",c2:"#fff",pat:"solid",vM:350},
+  {id:"cry",name:"Crystal Palace",lg:"Premier League",abbr:"CRY",c1:"#1B458F",c2:"#C4122E",pat:"hstrip",vM:350},
+  {id:"bre",name:"Brentford",lg:"Premier League",abbr:"BRE",c1:"#E30613",c2:"#fff",pat:"vstrip",vM:350},
+  {id:"bou",name:"Bournemouth",lg:"Premier League",abbr:"BOU",c1:"#E62333",c2:"#000",pat:"solid",vM:300},
+  {id:"sou",name:"Southampton",lg:"Premier League",abbr:"SOU",c1:"#D71920",c2:"#fff",pat:"vstrip",vM:300},
+  {id:"ips",name:"Ipswich Town",lg:"Premier League",abbr:"IPS",c1:"#0044A0",c2:"#fff",pat:"solid",vM:280},
+  {id:"rma",name:"Real Madrid",lg:"La Liga",abbr:"RMA",c1:"#FEBE10",c2:"#fff",pat:"solid",vM:1500},
+  {id:"bar",name:"Barcelona",lg:"La Liga",abbr:"BAR",c1:"#A50044",c2:"#004D98",pat:"vstrip",vM:1300},
+  {id:"atm",name:"Atlético Madrid",lg:"La Liga",abbr:"ATM",c1:"#CB3524",c2:"#fff",pat:"hstrip",vM:800},
+  {id:"sev",name:"Sevilla FC",lg:"La Liga",abbr:"SEV",c1:"#D2111B",c2:"#fff",pat:"solid",vM:400},
+  {id:"val",name:"Valencia CF",lg:"La Liga",abbr:"VAL",c1:"#FF5A00",c2:"#fff",pat:"solid",vM:350},
+  {id:"bet",name:"Real Betis",lg:"La Liga",abbr:"BET",c1:"#00954C",c2:"#FFD700",pat:"vstrip",vM:350},
+  {id:"bay",name:"Bayern München",lg:"Bundesliga",abbr:"BAY",c1:"#DC052D",c2:"#fff",pat:"solid",vM:1200},
+  {id:"bvb",name:"Borussia Dortmund",lg:"Bundesliga",abbr:"BVB",c1:"#FDE100",c2:"#000",pat:"solid",vM:700},
+  {id:"b04",name:"Bayer Leverkusen",lg:"Bundesliga",abbr:"B04",c1:"#E32221",c2:"#000",pat:"solid",vM:600},
+  {id:"her",name:"Hertha Berlin",lg:"Bundesliga",abbr:"HER",c1:"#005CA9",c2:"#fff",pat:"solid",vM:200},
+  {id:"int",name:"Inter Milan",lg:"Serie A",abbr:"INT",c1:"#0068A8",c2:"#000",pat:"vstrip",vM:900},
+  {id:"juv",name:"Juventus",lg:"Serie A",abbr:"JUV",c1:"#000",c2:"#fff",pat:"vstrip",vM:700},
+  {id:"mil",name:"AC Milan",lg:"Serie A",abbr:"MIL",c1:"#FB090B",c2:"#000",pat:"vstrip",vM:750},
+  {id:"nap",name:"Napoli",lg:"Serie A",abbr:"NAP",c1:"#12A0C3",c2:"#fff",pat:"solid",vM:650},
+  {id:"psg",name:"Paris Saint-Germain",lg:"Ligue 1",abbr:"PSG",c1:"#003087",c2:"#DA291C",pat:"solid",vM:900},
+  {id:"mar",name:"Olympique Marseille",lg:"Ligue 1",abbr:"OM",c1:"#009DD6",c2:"#fff",pat:"solid",vM:400},
+  {id:"lyo",name:"Olympique Lyon",lg:"Ligue 1",abbr:"OL",c1:"#003A8C",c2:"#E8001B",pat:"solid",vM:350},
+  {id:"ben",name:"Benfica",lg:"Primeira Liga",abbr:"SLB",c1:"#CC0000",c2:"#fff",pat:"solid",vM:600},
+  {id:"por",name:"FC Porto",lg:"Primeira Liga",abbr:"FCP",c1:"#003DA5",c2:"#fff",pat:"solid",vM:500},
+  {id:"spo",name:"Sporting CP",lg:"Primeira Liga",abbr:"SCP",c1:"#006600",c2:"#FFD700",pat:"solid",vM:450},
+  {id:"aja",name:"Ajax",lg:"Eredivisie",abbr:"AJX",c1:"#CC0000",c2:"#fff",pat:"vstrip",vM:450},
+  {id:"psv",name:"PSV Eindhoven",lg:"Eredivisie",abbr:"PSV",c1:"#CC0000",c2:"#fff",pat:"solid",vM:350},
+  {id:"gal",name:"Galatasaray",lg:"Süper Lig",abbr:"GAL",c1:"#C8102E",c2:"#F5A623",pat:"half",vM:350},
+  {id:"fen",name:"Fenerbahçe",lg:"Süper Lig",abbr:"FEN",c1:"#002F6C",c2:"#FFED00",pat:"solid",vM:300},
+  {id:"bes",name:"Beşiktaş",lg:"Süper Lig",abbr:"BJK",c1:"#000",c2:"#fff",pat:"vstrip",vM:250},
+  {id:"csk",name:"CSKA Moscow",lg:"Russian PL",abbr:"CSK",c1:"#C8102E",c2:"#003087",pat:"solid",vM:200},
+  {id:"zen",name:"Zenit St. Petersburg",lg:"Russian PL",abbr:"ZEN",c1:"#007FFF",c2:"#fff",pat:"solid",vM:250},
+  {id:"spa",name:"Spartak Moscow",lg:"Russian PL",abbr:"SPA",c1:"#C00000",c2:"#fff",pat:"hstrip",vM:180},
+  {id:"sha",name:"Shakhtar Donetsk",lg:"Ukrainian PL",abbr:"SHA",c1:"#F08000",c2:"#000",pat:"solid",vM:200},
+  {id:"ddk",name:"Dynamo Kyiv",lg:"Ukrainian PL",abbr:"DYK",c1:"#0044A0",c2:"#fff",pat:"solid",vM:150},
+  {id:"oly",name:"Olympiakos",lg:"Super League GR",abbr:"OLY",c1:"#CC0000",c2:"#fff",pat:"solid",vM:200},
+  {id:"pan",name:"Panathinaikos",lg:"Super League GR",abbr:"PAO",c1:"#006600",c2:"#fff",pat:"solid",vM:150},
+  {id:"aek",name:"AEK Athens",lg:"Super League GR",abbr:"AEK",c1:"#F9D000",c2:"#000",pat:"solid",vM:150},
+  {id:"pak",name:"PAOK",lg:"Super League GR",abbr:"PAK",c1:"#000",c2:"#fff",pat:"solid",vM:150},
+  {id:"cel",name:"Celtic",lg:"Scottish Prem.",abbr:"CEL",c1:"#16A84B",c2:"#fff",pat:"vstrip",vM:250},
+  {id:"ran",name:"Rangers",lg:"Scottish Prem.",abbr:"RAN",c1:"#003DA5",c2:"#fff",pat:"solid",vM:230},
+  {id:"hea",name:"Hearts",lg:"Scottish Prem.",abbr:"HEA",c1:"#800000",c2:"#fff",pat:"solid",vM:120},
+  {id:"and",name:"Anderlecht",lg:"Pro League",abbr:"AND",c1:"#6F2DA8",c2:"#fff",pat:"solid",vM:200},
+  {id:"sla",name:"Slavia Prague",lg:"Czech Liga",abbr:"SLA",c1:"#CC0000",c2:"#fff",pat:"half",vM:180},
+  {id:"vik",name:"Viktoria Plzeň",lg:"Czech Liga",abbr:"VPL",c1:"#003DA5",c2:"#C8102E",pat:"solid",vM:120},
+  {id:"din",name:"Dinamo Zagreb",lg:"HNL Croatia",abbr:"DNZ",c1:"#1A66B3",c2:"#fff",pat:"solid",vM:120},
+  {id:"rij",name:"HNK Rijeka",lg:"HNL Croatia",abbr:"RIJ",c1:"#006CBF",c2:"#fff",pat:"solid",vM:80},
+  {id:"haj",name:"Hajduk Split",lg:"HNL Croatia",abbr:"HAJ",c1:"#fff",c2:"#000",pat:"solid",vM:100},
+  {id:"rst",name:"Crvena Zvezda",lg:"SuperLiga SRB",abbr:"CSZ",c1:"#EF0107",c2:"#fff",pat:"solid",vM:80},
+  {id:"par",name:"Partizan",lg:"SuperLiga SRB",abbr:"PAR",c1:"#000",c2:"#fff",pat:"solid",vM:60},
+  {id:"voj",name:"Vojvodina",lg:"SuperLiga SRB",abbr:"VOJ",c1:"#EE2E24",c2:"#fff",pat:"solid",vM:30},
+];
+
+export const PRAW=[
+  ["mci","E. Haaland","ST",200],["mci","K. De Bruyne","CAM",150],["mci","P. Foden","LW",130],
+  ["mci","Rodri","CDM",130],["mci","R. Dias","CB",90],["mci","Ederson","GK",60],
+  ["mci","J. Doku","RW",80],["mci","B. Silva","CM",60],["mci","M. Akanji","CB",50],
+  ["mci","K. Walker","RB",35],["mci","M. Nunes","CM",50],["mci","S. Lewis","CB",30],
+  ["liv","M. Salah","RW",180],["liv","V. van Dijk","CB",80],["liv","T. Arnold","RB",80],
+  ["liv","L. Díaz","LW",80],["liv","D. Núñez","ST",80],["liv","Alisson","GK",55],
+  ["liv","D. Szoboszlai","CAM",70],["liv","A. Mac Allister","CM",65],
+  ["liv","A. Robertson","LB",55],["liv","C. Gakpo","LW",55],["liv","D. Jota","ST",60],
+  ["ars","B. Saka","RW",150],["ars","M. Ødegaard","CAM",130],["ars","D. Rice","CDM",120],
+  ["ars","Gabriel","CB",70],["ars","D. Raya","GK",55],["ars","G. Martinelli","LW",75],
+  ["ars","B. White","RB",60],["ars","O. Zinchenko","LB",55],["ars","K. Havertz","CAM",75],
+  ["ars","T. Partey","CDM",50],["ars","J. Timber","CB",55],
+  ["rma","Vinícius Jr.","LW",200],["rma","K. Mbappé","ST",200],["rma","J. Bellingham","CAM",200],
+  ["rma","F. Valverde","CM",120],["rma","T. Courtois","GK",60],["rma","L. Modrić","CM",40],
+  ["rma","E. Militão","CB",90],["rma","A. Rüdiger","CB",55],["rma","Rodrygo","RW",100],
+  ["rma","A. Tchouaméni","CDM",80],["rma","D. Carvajal","RB",45],["rma","E. Camavinga","CM",80],
+  ["bar","L. Yamal","RW",160],["bar","Pedri","CM",120],["bar","R. Lewandowski","ST",70],
+  ["bar","Raphinha","RW",90],["bar","Gavi","CM",80],["bar","R. Araújo","CB",70],
+  ["bar","A. Balde","LB",65],["bar","D. Olmo","CAM",65],["bar","M. ter Stegen","GK",50],
+  ["bar","J. Koundé","RB",60],["bar","F. de Jong","CDM",70],
+  ["bay","H. Kane","ST",150],["bay","J. Musiala","CAM",150],["bay","J. Kimmich","CDM",70],
+  ["bay","L. Sané","RW",75],["bay","A. Davies","LB",65],["bay","M. Upamecano","CB",60],
+  ["bay","Kim Min-jae","CB",60],["bay","L. Goretzka","CM",45],["bay","M. Neuer","GK",30],
+  ["che","C. Palmer","CAM",120],["che","N. Jackson","ST",80],["che","M. Caicedo","CDM",90],
+  ["che","E. Fernández","CM",70],["che","R. James","RB",60],["che","M. Cucurella","LB",55],
+  ["che","L. Colwill","CB",55],["che","R. Sánchez","GK",40],["che","R. Lavia","CDM",55],
+  ["psg","O. Dembélé","RW",100],["psg","G. Donnarumma","GK",50],["psg","A. Hakimi","RB",70],
+  ["psg","Marquinhos","CB",55],["psg","W. Zaïre-Emery","CM",70],["psg","Vitinha","CM",65],
+  ["psg","B. Barcola","LW",60],["psg","N. Mendes","LB",65],["psg","G. Ramos","ST",55],
+  ["mun","R. Højlund","ST",90],["mun","B. Fernandes","CAM",90],["mun","M. Rashford","LW",70],
+  ["mun","A. Onana","GK",45],["mun","K. Mainoo","CM",65],["mun","Casemiro","CDM",40],
+  ["mun","D. Dalot","RB",45],["mun","L. Martínez","CB",55],
+  ["tot","Son Heung-min","LW",80],["tot","J. Maddison","CAM",70],["tot","D. Kulusevski","RW",70],
+  ["tot","G. Vicario","GK",45],["tot","C. Romero","CB",65],["tot","M. van de Ven","CB",70],
+  ["tot","P. Porro","RB",55],["tot","D. Udogie","LB",55],
+  ["new","A. Isak","ST",90],["new","B. Guimarães","CDM",80],["new","A. Gordon","LW",70],
+  ["new","N. Pope","GK",50],["new","K. Trippier","RB",45],["new","S. Botman","CB",50],
+  ["avl","O. Watkins","ST",90],["avl","E. Martínez","GK",75],["avl","E. Konsa","CB",55],
+  ["avl","J. McGinn","CM",55],["avl","L. Bailey","LW",50],["avl","D. Luiz","CDM",65],
+  ["avl","M. Cash","RB",45],["avl","Y. Tielemans","CDM",50],
+  ["int","L. Martínez","ST",100],["int","H. Çalhanoğlu","CDM",80],["int","N. Barella","CM",80],
+  ["int","A. Bastoni","CB",75],["int","M. Thuram","ST",75],["int","Y. Sommer","GK",35],
+  ["int","F. Dimarco","LB",55],["int","D. Dumfries","RB",45],["int","B. Pavard","CB",55],
+  ["juv","D. Vlahović","ST",80],["juv","T. Koopmeiners","CM",65],["juv","G. Bremer","CB",60],
+  ["juv","M. Locatelli","CDM",45],["juv","F. Gatti","CB",50],["juv","W. Szczęsny","GK",30],
+  ["mil","R. Leão","LW",90],["mil","M. Maignan","GK",65],["mil","T. Hernández","LB",65],
+  ["mil","F. Tomori","CB",55],["mil","T. Reijnders","CM",60],["mil","C. Pulisic","CAM",55],
+  ["nap","V. Osimhen","ST",100],["nap","K. Kvaratskhelia","LW",130],["nap","G. Di Lorenzo","RB",45],
+  ["nap","S. Lobotka","CDM",55],["nap","A. Meret","GK",45],["nap","G. Raspadori","CAM",50],
+  ["atm","A. Griezmann","ST",75],["atm","J. Oblak","GK",55],["atm","R. De Paul","CM",55],
+  ["atm","N. Molina","RB",50],["atm","J. Giménez","CB",55],["atm","Koke","CM",30],
+  ["b04","F. Wirtz","CAM",130],["b04","G. Xhaka","CDM",45],["b04","V. Boniface","ST",60],
+  ["b04","A. Grimaldo","LB",55],["b04","J. Tah","CB",45],
+  ["bvb","S. Guirassy","ST",55],["bvb","G. Kobel","GK",50],["bvb","N. Schlotterbeck","CB",50],
+  ["bvb","K. Adeyemi","LW",55],["bvb","I. Maatsen","LB",45],["bvb","M. Sabitzer","CM",40],
+  ["ben","D. Neres","RW",55],["ben","O. Kökcü","CM",45],["ben","V. Pavlidis","ST",40],
+  ["ben","J. Trubin","GK",45],["ben","N. Silva","CB",35],["ben","A. Di María","LW",20],
+  ["por","Evanilson","ST",50],["por","S. Eustaquio","CM",45],["por","D. Costa","GK",45],
+  ["por","M. Galeno","LW",40],["por","Pepe","CB",40],
+  ["spo","V. Gyökeres","ST",80],["spo","M. Hjulmand","CDM",45],["spo","P. Gonçalves","CAM",50],
+  ["spo","N. Santos","LW",40],
+  ["aja","B. Brobbey","ST",45],["aja","D. Ramaj","GK",40],["aja","A. Hato","LB",35],
+  ["psv","L. de Jong","ST",35],["psv","J. Veerman","CM",45],["psv","W. Benitez","GK",35],
+  ["gal","S. Aktürkoğlu","LW",35],["gal","F. Muslera","GK",20],["gal","A. Zaha","LW",25],
+  ["fen","E. Džeko","ST",15],["fen","F. Müldür","RB",25],["fen","İ. Yüksel","LW",25],
+  ["bes","G. Fernandes","CM",25],["bes","A. Batshuayi","ST",20],["bes","S. Uçan","CM",20],
+  ["sev","Y. En-Nesyri","ST",45],["sev","M. Acuña","LB",40],["sev","B. Gil","LW",40],
+  ["val","G. Mamardashvili","GK",50],["val","H. Duro","ST",35],["val","C. Mosquera","CB",35],
+  ["bet","Isco","CAM",25],["bet","M. Roca","CDM",40],["bet","C. Iglesias","ST",35],
+  ["mar","Vitinha","ST",45],["mar","P. López","GK",40],["mar","C. Mbemba","CB",35],
+  ["lyo","R. Cherki","CAM",45],["lyo","A. Lacazette","ST",25],["lyo","A. Lopes","GK",35],
+  ["whu","L. Paquetá","CAM",60],["whu","J. Bowen","RW",55],["whu","T. Souček","CM",50],
+  ["bha","E. Ferguson","ST",55],["bha","J. Pedro","ST",45],["bha","C. Estupiñan","LB",40],
+  ["ful","B. Leno","GK",45],["ful","A. Pereira","CM",45],["ful","R. Jiménez","ST",35],
+  ["wol","M. Cunha","ST",60],["wol","P. Neto","RW",50],["wol","J. Sá","GK",40],
+  ["eve","J. Branthwaite","CB",50],["eve","J. Pickford","GK",50],["eve","A. Onana","CDM",55],
+  ["lei","M. Hermansen","GK",45],["lei","S. Mavididi","LW",40],["lei","W. Ndidi","CDM",40],
+  ["nfo","M. Gibbs-White","CAM",55],["nfo","C. Wood","ST",40],["nfo","Murillo","CB",45],
+  ["cry","E. Eze","CAM",65],["cry","J. Mateta","ST",55],["cry","M. Guéhi","CB",55],
+  ["bre","B. Mbeumo","RW",60],["bre","Y. Wissa","ST",50],["bre","M. Flekken","GK",40],
+  ["bou","A. Semenyo","RW",45],["bou","I. Zabarnyi","CB",45],["bou","M. Travers","GK",35],
+  ["sou","T. Dibling","CAM",35],["sou","A. Armstrong","ST",35],["sou","G. Bazunu","GK",35],
+  ["ips","L. Delap","ST",45],["ips","O. Hutchinson","LW",40],["ips","S. Morsy","CDM",30],
+  ["cel","M. O'Riley","CM",40],["cel","K. Furuhashi","ST",30],["cel","J. Hart","GK",25],
+  ["ran","J. Tavernier","RB",30],["ran","C. Dessers","ST",25],["ran","J. Butland","GK",25],
+  ["hea","L. Shankland","ST",20],["hea","C. Gordon","GK",20],
+  ["zen","Claudinho","CAM",30],["zen","Malcolm","RW",35],["zen","A. Kerzhakov","GK",20],
+  ["csk","F. Chalov","ST",25],["csk","I. Diveev","CB",22],["csk","I. Oblyakov","CM",22],
+  ["spa","Q. Promes","RW",20],["spa","A. Maksimenko","GK",25],
+  ["sha","A. Mudryk","LW",60],["sha","D. Sikan","ST",28],["sha","M. Matviyenko","CB",30],
+  ["ddk","V. Buyalsky","CM",25],["ddk","O. Karavaev","RB",22],
+  ["oly","A. El Kaabi","ST",25],["oly","T. Tzolakis","GK",25],["oly","K. Fortounis","CAM",20],
+  ["pan","F. Ioannidis","ST",22],["pan","B. Dragowski","GK",20],
+  ["aek","E. Ponce","ST",25],["aek","N. Bakasetas","CAM",22],["aek","V. Barkas","GK",20],
+  ["pak","K. Swiderski","ST",25],["pak","S. Schwab","CM",20],
+  ["and","F. Amuzu","RW",28],["and","C. Stroeykens","CAM",25],
+  ["her","F. Reese","LW",25],["her","F. Uremović","CB",20],["her","I. Scherhant","RW",18],
+  ["sla","T. Holeš","CB",20],["sla","C. Zafeiris","CM",18],["sla","J. Mandous","GK",18],
+  ["vik","L. Kalvach","CM",15],["vik","A. Čermák","CM",15],["vik","M. Jedlička","GK",12],
+  ["din","D. Špikić","ST",20],["din","L. Ivanušec","CAM",18],
+  ["rij","S. Jakić","CM",12],["rij","D. Petrak","GK",10],
+  ["haj","M. Livaja","ST",12],["haj","L. Kalinić","GK",10],
+  ["rst","M. Pavkov","ST",3],["rst","N. Bukari","LW",4],["rst","O. Spajić","CB",3],["rst","M. Borjan","GK",2.5],
+  ["par","S. Pavlović","CM",4],["par","A. Jović","CM",3],["par","L. Marković","LW",2.5],
+  ["voj","D. Kojić","ST",1.5],["voj","I. Đurić","CM",1],["voj","M. Šarić","CB",1],
+];
+
+export const FARAW=[
+  ["Cristiano Ronaldo","ST",30],["Lionel Messi","CAM",40],["Neymar Jr.","LW",25],
+  ["Karim Benzema","ST",20],["Sadio Mané","LW",20],["N'Golo Kanté","CDM",20],
+  ["Riyad Mahrez","RW",18],["Roberto Firmino","ST",15],["Sergio Ramos","CB",8],
+  ["Memphis Depay","ST",30],["P. Dybala","CAM",30],["F. Kessié","CDM",30],
+  ["A. Laporte","CB",40],["S. Milinković-Savić","CM",40],["G. Lo Celso","CM",25],
+  ["T. Werner","ST",25],["I. Perišić","LW",20],["P. van Aanholt","LB",18],
+  ["W. Zaha","LW",20],["I. Gvardiol","CB",60],["C. Nkunku","CAM",50],
+  ["C. Eriksen","CAM",30],["I. Gündoğan","CM",35],["T. Kubo","RW",45],
+  ["H. Lozano","RW",30],["K. Mitrović","ST",30],["D. Tadić","LW",20],
+  ["M. Oyarzabal","LW",35],["A. Baena","CM",30],["B. Yıldız","CAM",35],
+  ["A. Guedes","RW",25],["Cucho Hernández","ST",30],["J. Ward-Prowse","CM",30],
+  ["O. Giroud","ST",15],["E. Hazard","LW",15],["Y. Cherki","CAM",40],
+  ["L. Trossard","LW",40],["S. Gnabry","RW",40],["B. Coman","RW",40],
+  ["C. Gallagher","CM",45],["O. Sorloth","ST",35],["M. Verratti","CM",20],
+  ["L. Suárez","ST",10],["D. Alli","CAM",15],["F. Lampard","CM",5],
+  ["T. Alderweireld","CB",10],["J. Vertonghen","CB",12],["J. Mata","CAM",5],
+  ["C. Tevez","ST",5],["Zlatan Ibrahimović","ST",5],["G. Chiellini","CB",5],
+  ["R. Iborra","ST",10],["W. Endō","CDM",30],["T. Minamino","CM",25],
+  ["D. Kamada","CAM",25],["T. Tomiyasu","RB",30],["A. Miranchuk","CAM",22],
+  ["F. Ruiz","CM",40],["N. Williams","RB",30],["O. McAtee","CM",25],
+  ["A. O'Riley","CM",35],["Marcelo","LB",5],["A. Cole","LB",5],
+  ["P. Sarabia","LW",25],["A. Pirlo","CM",5],["Robinho","LW",5],
+  ["J. Navas","RB",10],["K. Boateng","CM",8],["G. Cahill","CB",5],
+];
+
+export function buildState(){
+  uid=1;
+  const sorted=[...CDEFS].sort((a,b)=>b.vM-a.vM);
+  const flMap={};sorted.forEach((c,i)=>{flMap[c.id]=i<20?"FPL":i<40?"FCH":"FCL";});
+  const clubs=CDEFS.map(c=>({...c,price:Math.floor(c.vM*1e6/100),ownedBy:"bot",
+    pts:0,wins:0,draws:0,losses:0,gf:0,ga:0,fL:flMap[c.id],
+    fp:{pts:0,w:0,d:0,l:0,gf:0,ga:0}}));
+  const players=PRAW.map(([cid,nm,pos,vM])=>mkP(nm,pos,vM,cid));
+  const cnt={};players.forEach(p=>{cnt[p.clubId]=(cnt[p.clubId]||0)+1;});
+  clubs.forEach(c=>{
+    const n=Math.max(0,18-(cnt[c.id]||0));
+    for(let i=0;i<n;i++)players.push(fill(POS[i%POS.length],c.vM/(15+rnd(0,18)),c.id));
+  });
+  FARAW.forEach(([nm,pos,vM])=>players.push(mkP(nm,pos,vM,"free")));
+  return{tokens:5000000,myClubId:null,week:1,season:1,prizePool:0,clubs,players,
+    cup:{active:false,round:0,rounds:[],champion:null},
+    friendlyHistory:[],purchaseOrder:0};
+}
+
+export const STADIA=[
+  {n:"Local Ground",cap:5000,cost:0,inc:50000},
+  {n:"District Arena",cap:15000,cost:200000,inc:150000},
+  {n:"Regional Stadium",cap:30000,cost:500000,inc:350000},
+  {n:"City Arena",cap:55000,cost:1000000,inc:650000},
+  {n:"Freedom Stadium",cap:75000,cost:1500000,inc:1000000},
+  {n:"World Arena",cap:90000,cost:2000000,inc:1500000},
+];
+export const FMTNS=["4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2","4-5-1"];
+export const TACS=["Balanced","High Press","Counter-Attack","Tiki-Taka","Park the Bus","Wing Play"];
+export const MOTIVS=[{l:"Standard",cost:0,b:0},{l:"Team Talk",cost:10000,b:3},{l:"Inspire",cost:50000,b:7},{l:"Battle Cry",cost:100000,b:12}];
