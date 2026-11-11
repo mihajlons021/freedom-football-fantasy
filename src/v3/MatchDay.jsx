@@ -1,6 +1,6 @@
 // Live match: broadcast-style score bug, animated 2D pitch, commentary, live stats, half-time and full-time screens.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Crest, PitchLines } from "./ui.jsx";
+import { Crest, PitchLines, kitOf } from "./ui.jsx";
 import { rating } from "../engine/match.js";
 import { PitchAnimator } from "./animator.js";
 import { Match, MAX_SUBS } from "../engine/match.js";
@@ -11,7 +11,7 @@ const SPEEDS = [{ k: 1, l: "1×", ms: 900 }, { k: 2, l: "2×", ms: 450 }, { k: 4
 // away team switches to its second colour (or white) when the shirts would clash
 const hex = h => { const n = h.replace("#", ""); const f = n.length === 3 ? n.split("").map(c => c + c).join("") : n; return [0, 2, 4].map(i => parseInt(f.slice(i, i + 2), 16)); };
 const near = (a, b) => { const x = hex(a), y = hex(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 120; };
-export const kitColors = (h, a) => { const hc = h.c1; let ac = a.c1; if (near(hc, ac)) ac = !near(hc, a.c2) ? a.c2 : near(hc, "#ffffff") ? "#111111" : "#ffffff"; return [hc, ac]; };
+export const kitColors = (h, a) => { const hc = kitOf(h).c1; let ac = kitOf(a).c1; if (near(hc, ac)) { const aw = kitOf(a, true).c1; ac = !near(hc, aw) ? aw : near(hc, "#ffffff") ? "#111111" : "#ffffff"; } return [hc, ac]; };
 
 export default function MatchDay({ home, away, homeClub, awayClub, seed, myIsHome, onDone }) {
   const [HC, AC] = kitColors(homeClub, awayClub);

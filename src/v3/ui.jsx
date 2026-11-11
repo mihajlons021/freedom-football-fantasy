@@ -1,3 +1,4 @@
+import { KITS } from "../data.js";
 // Shared visual pieces: club crest, player cards, pitch.
 import { useEffect, useRef, useState } from "react";
 import { rating } from "../engine/match.js";
@@ -107,9 +108,20 @@ function isLight(hex) { const h = hex.replace("#", ""); const n = h.length === 3
    "multiply" (keeps folds and shadows) and "soft-light" (keeps highlights). */
 const patternBg = (c1, c2, pat) => pat === "vstrip" ? `repeating-linear-gradient(90deg,${c1} 0 11%,${c2} 11% 20%)`
   : pat === "hstrip" ? `repeating-linear-gradient(180deg,${c1} 0 13%,${c2} 13% 22%)`
-  : pat === "half" ? `linear-gradient(90deg,${c1} 50%,${c2} 50%)` : c1;
-export function Shirt({ club, num, size = 40, gk = false }) {
+  : pat === "half" ? `linear-gradient(90deg,${c1} 50%,${c2} 50%)`
+  : pat === "band" ? `linear-gradient(90deg,${c1} 38%,${c2} 38% 62%,${c1} 62%)`
+  : pat === "hband" ? `linear-gradient(180deg,${c1} 36%,${c2} 36% 50%,${c1} 50%)`
+  : pat === "sleeves" ? `linear-gradient(90deg,${c2} 24%,${c1} 24% 76%,${c2} 76%)`
+  : pat === "sash" ? `linear-gradient(135deg,${c1} 40%,${c2} 40% 55%,${c1} 55%)` : c1;
+// the club's real home / away kit, falling back to its colours
+export const kitOf = (club, away = false) => {
+  const k = KITS[club?.id];
+  if (k) { const x = away ? k.a : k.h; return { c1: x.c, c2: x.t, pat: x.pat, shorts: x.sh }; }
   const { c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
+  return away ? { c1: isLight(c1) ? "#1d2333" : "#f2f2f2", c2: c1, pat: "solid", shorts: isLight(c1) ? "#1d2333" : "#f2f2f2" } : { c1, c2, pat, shorts: null };
+};
+export function Shirt({ club, num, size = 40, gk = false, away = false }) {
+  const { c1, c2, pat } = kitOf(club, away);
   const body = gk ? "#ffcc4d" : c1;
   const bg = gk ? body : patternBg(c1, c2, pat);
   const ink = isLight(body) ? "#111" : "#fff";
@@ -122,12 +134,13 @@ export function Shirt({ club, num, size = 40, gk = false }) {
     </div>
   );
 }
-export function Kit({ club, size = 140, gk = false }) {
-  const { c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
-  const shorts = gk ? "#1b1b1b" : (isLight(c1) === isLight(c2) || pat !== "solid") ? (isLight(c1) ? "#1d2333" : "#f2f2f2") : c2;
+export function Kit({ club, size = 140, gk = false, away = false, label }) {
+  const { c1, c2, pat, shorts: sh } = kitOf(club, away);
+  const shorts = gk ? "#1b1b1b" : sh || ((isLight(c1) === isLight(c2) || pat !== "solid") ? (isLight(c1) ? "#1d2333" : "#f2f2f2") : c2);
   return (
     <div className="kitfull" style={{ width: size }} aria-hidden="true">
-      <Shirt club={club} size={size} gk={gk} />
+      {label && <small className="kit-l">{label}</small>}
+      <Shirt club={club} size={size} gk={gk} away={away} />
       <div className="kitshorts" style={{ width: size, height: size * .59 }}>
         <div className="kit-col" style={{ background: shorts, maskImage: "url(/art/shorts.webp)", WebkitMaskImage: "url(/art/shorts.webp)" }} />
         <img className="kit-mul" src="/art/shorts.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />

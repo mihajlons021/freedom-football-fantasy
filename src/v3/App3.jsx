@@ -500,7 +500,7 @@ function Transfers({ c, set, say, open }) {
         <div className="hero-card stadium club-band" style={{ "--h": cl.c1, "--a": cl.c2 }}>
           <Crest club={cl} size={86} />
           <div className="cb-t"><div className="kick">{cl.lg.toUpperCase()}</div><h2>{cl.name}</h2><span>Team rating {C.teamRating(c, cl.id)} · {C.squadOf(c, cl.id).length} players</span></div>
-          <div className="cl-kits"><Kit club={cl} size={92} /><Kit club={cl} size={74} gk /></div>
+          <div className="cl-kits"><Kit club={cl} size={92} label="Home" /><Kit club={cl} size={80} away label="Away" /><Kit club={cl} size={66} gk label="GK" /></div>
           <button className="btn soft" onClick={() => open(cl.id)}>Club profile</button>
         </div>); })()}
       <div className="cards">{list.map(p => { const cl = p.clubId === "free" ? null : C.clubById(c, p.clubId); const price = C.priceOf(p); return (
@@ -536,7 +536,7 @@ function ClubSheet({ c, id, set, say, onClose }) {
             </div>
             {row && <Form f={row.form} />}
           </div>
-          <div className="cl-kits"><Kit club={cl} size={118} /><Kit club={cl} size={92} gk /></div>
+          <div className="cl-kits"><Kit club={cl} size={112} label="Home" /><Kit club={cl} size={96} away label="Away" /><Kit club={cl} size={80} gk label="GK" /></div>
         </div>
         <div className="roster">
           {LINES.map(([title, ps]) => { const g = sq.filter(p => ps.includes(p.pos)); if (!g.length) return null; return (
@@ -569,7 +569,7 @@ function Club({ c, set, say }) {
     <div className="clubv">
       <div className="hero-card cl-head stadium" style={{ "--h": club.c1, "--a": club.c2 }}>
         <Crest club={club} size={110} />
-        <div className="cl-kits"><Kit club={club} size={120} /><Kit club={club} size={96} gk /></div>
+        <div className="cl-kits"><Kit club={club} size={120} label="Home" /><Kit club={club} size={100} away label="Away" /><Kit club={club} size={84} gk label="GK" /></div>
         <div><div className="kick">MANAGER {c.manager.toUpperCase()}</div><h2>{club.name}</h2><p>{C.LEAGUES[c.league]} · Season {c.season}</p></div>
       </div>
       <div className="home-grid">

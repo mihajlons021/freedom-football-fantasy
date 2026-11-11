@@ -434,3 +434,5 @@ select.inp option{background:#0e1528}
   .trg-row{grid-template-columns:40px 1fr 90px;}.trg-row>.meter:nth-of-type(2),.trg-row .st,.trg-row .dots{display:none}.trg-row .trg-b{grid-column:1/-1}
   .psheet{grid-template-columns:1fr}.sp-cols{grid-template-columns:1fr}
 }
+
+.kitfull{position:relative}.kit-l{display:block;text-align:center;font:800 .6rem Inter;letter-spacing:.14em;color:var(--mute);text-transform:uppercase;margin-bottom:4px}
