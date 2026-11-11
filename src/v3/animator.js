@@ -37,6 +37,11 @@ export class PitchAnimator {
   dir(side) { return side === "h" ? 1 : -1; }
   goalX(side) { return side === "h" ? 100 : 0; }        // the goal this side attacks
   byId(id) { return this.players.find(p => p.id === id); }
+  replace(side, outId, p) {           // substitution: the new player takes the same spot
+    const o = this.byId(outId); if (!o || !p) return;
+    o.id = p.id; o.el.querySelector("span").textContent = p.name.split(" ").slice(-1)[0];
+    o.el.classList.remove("off"); o.off = false; o.el.animate([{ transform: o.el.style.transform + " scale(1.8)", opacity: .3 }, { transform: o.el.style.transform, opacity: 1 }], { duration: 600 });
+  }
   sendOff(id) { const p = this.byId(id); if (p) { p.off = true; p.el.classList.add("off"); } }
 
   // ---------- set pieces ----------

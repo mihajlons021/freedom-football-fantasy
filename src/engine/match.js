@@ -50,14 +50,17 @@ export function rating(p) {           // position-aware overall, the number show
 }
 
 // ---------- team strength from the eleven on the pitch ----------
-function teamProfile(side) {
+// stam: live stamina per player id (0..100) during a match; sharp: match readiness from team talks (-6..+6)
+function teamProfile(side, stam = {}, hurt = new Set()) {
   const { players, formation, tactic, mood = 0 } = side;
   const slots = FORMATIONS[formation] || FORMATIONS["4-3-3"];
   const xi = slots.map(([pos, x, y], i) => {
     const p = players[i];
     const f = p ? fit(p.pos, pos) : .3;
-    const cond = p ? (p.cond ?? 90) / 100 : .5, mor = p ? (p.morale ?? 80) / 100 : .5;
-    return { p, slot: pos, x, y, eff: f * (.82 + .18 * cond) * (.9 + .1 * mor) };
+    const cond = p ? (stam[p.id] ?? p.cond ?? 90) / 100 : .5, mor = p ? (p.morale ?? 80) / 100 : .5;
+    const sharp = p ? 1 + (p.sharp || 0) / 100 : 1;
+    const injured = p && hurt.has(p.id) ? .55 : 1;
+    return { p, slot: pos, x, y, eff: f * (.72 + .28 * cond) * (.9 + .1 * mor) * sharp * injured };
   });
   const s = (k, line) => { const g = xi.filter(e => LINE[e.slot] === line && e.p); return g.length ? g.reduce((t, e) => t + e.p.stats[k] * e.eff, 0) / g.length : 40; };
   const T = TACTICS[tactic] || TACTICS.Balanced;
@@ -80,100 +83,158 @@ const L = {
   assist: [" Assist {a}.", " Lovely ball from {a}.", " Set up by {a}."],
   yellow: ["Yellow card: {p} for a late challenge.", "{p} goes into the book.", "Booked — {p} pulls back his man."],
   red: ["RED CARD! {p} is sent off!"],
-  injury: ["{p} goes down injured and has to be replaced."],
+  injury: ["{p} goes down injured!", "{p} is down and holding his leg."],
   corner: ["Corner to {t}.", "{t} win a corner."],
+  sub: ["Substitution for {t}: {i} comes on for {o}."],
 };
 const say = (R, k, v) => L[k][Math.floor(R() * L[k].length)].replace(/\{(\w)\}/g, (_, c) => v[c] ?? "");
+export const MAX_SUBS = 5;
 
-// ---------- the match ----------
-export function simulate(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}) {
-  const R = rng(seed);
-  const H = teamProfile({ ...home, mood: (home.mood || 0) + homeBoost }), A = teamProfile(away);
-  const sides = { h: H, a: A };
-  const st = { h: stat(), a: stat() };
-  const ev = [{ m: 0, type: "kickoff", side: "h", x: 50, y: 50, text: "Kick-off! We're under way." }];
-  const pl = {};  // player match stats
-  const P = p => (pl[p.id] = pl[p.id] || { id: p.id, name: p.name, g: 0, a: 0, sh: 0, sv: 0, yc: 0, rc: 0, inj: false, base: 6.3 + R() * .4 });
-  [H, A].forEach(T => T.xi.forEach(e => e.p && P(e.p)));
-  const off = { h: new Set(), a: new Set() };
-  let score = { h: 0, a: 0 }, possTicks = { h: 0, a: 0 };
-  const tl = [];   // per-minute timeline for the animated pitch: who has the ball, did it lead to a chance, which lane
+// ---------- the match, one minute at a time ----------
+// home/away: { name, players[11] (slot order), formation, tactic, bench[] , plans:[{min,out,in}], auto:{tired:0..100, injured:bool}, ai:bool }
+export class Match {
+  constructor(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}) {
+    this.R = rng(seed); this.sides = { h: { ...home, mood: (home.mood || 0) + homeBoost, players: home.players.slice() }, a: { ...away, players: away.players.slice() } };
+    this.bench = { h: (home.bench || []).slice(), a: (away.bench || []).slice() };
+    this.plans = { h: (home.plans || []).slice(), a: (away.plans || []).slice() };
+    this.auto = { h: home.auto || { tired: 0, injured: true }, a: away.auto || { tired: 62, injured: true } };
+    this.ai = { h: !!home.ai, a: away.ai !== false };
+    this.st = { h: stat(), a: stat() }; this.ev = [{ m: 0, type: "kickoff", side: "h", x: 50, y: 50, text: "Kick-off! We're under way." }];
+    this.pl = {}; this.off = { h: new Set(), a: new Set() }; this.hurt = new Set(); this.subs = { h: 0, a: 0 };
+    this.score = { h: 0, a: 0 }; this.poss = { h: 0, a: 0 }; this.tl = []; this.m = 0; this.stam = {}; this.mins = {}; this.on = {};
+    ["h", "a"].forEach(s => this.sides[s].players.forEach(p => { if (p) { this.P(p); this.stam[p.id] = p.cond ?? 90; this.on[p.id] = 0; } }));
+    this.prof();
+  }
+  P(p) { return (this.pl[p.id] = this.pl[p.id] || { id: p.id, name: p.name, g: 0, a: 0, sh: 0, sv: 0, yc: 0, rc: 0, inj: false, base: 6.3 + this.R() * .4 }); }
+  prof() { this.H = teamProfile(this.sides.h, this.stam, this.hurt); this.A = teamProfile(this.sides.a, this.stam, this.hurt); this.T = { h: this.H, a: this.A }; }
+  get done() { return this.m >= 93; }
+  get xi() { return { h: this.H.xi, a: this.A.xi }; }
+  name(s) { return this.sides[s].name; }
 
-  for (let m = 1; m <= 90 + 3; m++) {
-    if (m === 46) ev.push({ m: 45, type: "halftime", text: `Half-time: ${home.name} ${score.h}–${score.a} ${away.name}` });
-    const fatigue = s => 1 - (m / 90) * .06 * sides[s].T.tired;
-    const ph = H.mid * fatigue("h") / (H.mid * fatigue("h") + A.mid * fatigue("a"));
+  // replace a player; returns false if not allowed
+  sub(s, outId, inId) {
+    if (this.subs[s] >= MAX_SUBS || this.off[s].has(outId)) return false;
+    const i = this.sides[s].players.findIndex(p => p && p.id === outId), b = this.bench[s].findIndex(p => p.id === inId);
+    if (i < 0 || b < 0) return false;
+    const out = this.sides[s].players[i], inn = this.bench[s][b];
+    this.sides[s].players[i] = inn; this.bench[s].splice(b, 1); this.subs[s]++;
+    this.P(inn); this.stam[inn.id] = inn.cond ?? 95; this.on[inn.id] = this.m; this.mins[out.id] = this.m - (this.on[out.id] || 0);
+    this.hurt.delete(out.id);
+    this.ev.push({ m: Math.max(this.m, 1), type: "sub", side: s, out: out.id, in: inn.id, text: say(this.R, "sub", { t: this.name(s), i: inn.name, o: out.name }) });
+    this.prof(); return true;
+  }
+  // automatic substitutions: planned ones, injured players, and tired players
+  autoSubs() {
+    ["h", "a"].forEach(s => {
+      const side = this.sides[s];
+      const bestFor = slotPos => this.bench[s].filter(p => !p.injured).sort((x, y) => rating(y) * fit(y.pos, slotPos) - rating(x) * fit(x.pos, slotPos))[0];
+      this.plans[s] = this.plans[s].filter(pl => {
+        if (pl.min > this.m) return true;
+        const inP = this.bench[s].find(p => p.id === pl.in);
+        if (inP && side.players.some(p => p && p.id === pl.out)) this.sub(s, pl.out, pl.in);
+        return false;
+      });
+      if (this.auto[s].injured) side.players.forEach((p, i) => { if (p && this.hurt.has(p.id)) { const r = bestFor(FORMATIONS[side.formation][i][0]); if (r) this.sub(s, p.id, r.id); } });
+      // computer-managed teams make routine changes around the hour: freshest legs for the most tired
+      if (this.ai[s] && [60, 68, 76].includes(this.m) && this.subs[s] < 3) {
+        let wi = -1, low = 101; side.players.forEach((p, i) => { if (p && i && !this.off[s].has(p.id) && this.stam[p.id] < low) { low = this.stam[p.id]; wi = i; } });
+        if (wi > 0 && low < 85) { const r = bestFor(FORMATIONS[side.formation][wi][0]); if (r) this.sub(s, side.players[wi].id, r.id); }
+      }
+      const tired = this.auto[s].tired;
+      if (tired && this.m >= 55 && this.m % 5 === 0) {
+        side.players.forEach((p, i) => { if (!p || i === 0 || this.subs[s] >= MAX_SUBS) return; if (this.stam[p.id] < tired) { const r = bestFor(FORMATIONS[side.formation][i][0]); if (r) this.sub(s, p.id, r.id); } });
+      }
+    });
+  }
+  step() {
+    if (this.done) return [];
+    const before = this.ev.length, R = this.R, m = ++this.m;
+    if (m === 46) this.ev.push({ m: 45, type: "halftime", text: `Half-time: ${this.name("h")} ${this.score.h}–${this.score.a} ${this.name("a")}` });
+    this.autoSubs();
+    // stamina drains every minute (more with pressing tactics, less for strong players)
+    ["h", "a"].forEach(s => this.sides[s].players.forEach(p => { if (p) this.stam[p.id] = Math.max(25, this.stam[p.id] - (.12 + (100 - p.stats.PHY) / 1200) * this.T[s].T.tired * (this.hurt.has(p.id) ? 2 : 1) * (p.pos === "GK" ? .35 : 1)); }));
+    if (m % 3 === 0) this.prof();
+    const H = this.H, A = this.A;
+    const ph = H.mid / (H.mid + A.mid);
     const s = R() < ph ? "h" : "a", o = s === "h" ? "a" : "h";
-    possTicks[s] += 1;
-    tl[m] = { s, chance: false, zy: 50, depth: .35 + R() * .35 };
-    const T = sides[s], D = sides[o];
+    this.poss[s]++;
+    this.tl[m] = { s, chance: false, zy: 50, depth: .35 + R() * .35 };
+    const T = this.T[s], D = this.T[o], off = this.off, st = this.st;
     const man = n => 11 - off[n].size;
-    // chance of an attack turning into a real chance
     let pChance = .2 * (T.atk / D.def) ** 1.15 * (man(s) / 11) * (11 / Math.max(man(o), 8));
-    const losingBall = (s === "h" ? ph : 1 - ph) < .5;
-    if (losingBall && T.T.counter) pChance *= 1 + T.T.counter;
+    if ((s === "h" ? ph : 1 - ph) < .5 && T.T.counter) pChance *= 1 + T.T.counter;
     if (R() > pChance) {
-      if (R() < .06) { st[s].corners++; if (R() < .4) ev.push({ m, type: "corner", side: s, flagY: R() < .5 ? 0 : 100, x: 98, y: R() < .5 ? 2 : 98, text: say(R, "corner", { t: (s === "h" ? home : away).name }) }); }
-      if (R() < .045) card(m, o);
-      continue;
+      if (R() < .06) { st[s].corners++; if (R() < .4) this.ev.push({ m, type: "corner", side: s, flagY: R() < .5 ? 0 : 100, x: 98, y: R() < .5 ? 2 : 98, text: say(R, "corner", { t: this.name(s) }) }); }
+      if (R() < .045) this.card(m, o);
+      return this.ev.slice(before);
     }
-    // zone of the attack
     const zone = R() < .32 + T.T.wide * .5 ? (R() < .5 ? "left" : "right") : "centre";
     const zy = zone === "left" ? 18 : zone === "right" ? 82 : 50;
-    tl[m].chance = true; tl[m].zy = zy;
+    this.tl[m].chance = true; this.tl[m].zy = zy;
     const attackers = T.xi.filter(e => e.p && !off[s].has(e.p.id) && LINE[e.slot] !== "gk");
-    const shooter = pickW(R, attackers, e => ({ fwd: 6, mid: 2.6, def: .5 }[LINE[e.slot]]) * (e.p.stats.SHO / 60) ** 2 * (zone !== "centre" && (e.slot === "LW" || e.slot === "RW") ? 1.6 : 1));
+    if (!attackers.length) return this.ev.slice(before);
+    const shooter = pickW(R, attackers, e => ({ fwd: 6, mid: 2.6, def: .5 }[LINE[e.slot]]) * (e.p.stats.SHO / 60) ** 2 * e.eff * (zone !== "centre" && (e.slot === "LW" || e.slot === "RW") ? 1.6 : 1));
     const helpers = attackers.filter(e => e !== shooter);
-    const assister = R() < .72 ? pickW(R, helpers, e => (e.p.stats.PAS / 60) ** 2 * ({ fwd: 1.4, mid: 2, def: .7 }[LINE[e.slot]])) : null;
+    const assister = helpers.length && R() < .72 ? pickW(R, helpers, e => (e.p.stats.PAS / 60) ** 2 * ({ fwd: 1.4, mid: 2, def: .7 }[LINE[e.slot]])) : null;
     const sp = shooter.p;
-    ev.push({ m, type: "chance", side: s, pid: sp.id, aid: assister?.p.id || null, x: 70 + R() * 10, y: zy + (R() - .5) * 20, text: say(R, "chance", { p: sp.name, z: zone === "centre" ? "through the middle" : "down the " + zone }) });
-    // quality of the chance
-    let xg = clamp(.022 + R() * R() * .31 + (sp.stats.SHO - D.gk) / 650 + (sp.stats.DRI - D.def) / 1300, .01, .6);
-    st[s].shots++; st[s].xg += xg; P(sp).sh++;
+    this.ev.push({ m, type: "chance", side: s, pid: sp.id, aid: assister?.p.id || null, x: 70 + R() * 10, y: zy + (R() - .5) * 20, text: say(R, "chance", { p: sp.name, z: zone === "centre" ? "through the middle" : "down the " + zone }) });
+    const xg = clamp(.022 + R() * R() * .31 + (sp.stats.SHO - D.gk) / 650 + (sp.stats.DRI - D.def) / 1300, .01, .6);
+    st[s].shots++; st[s].xg += xg; this.P(sp).sh++;
     const k = D.xi[0].p;
     const onTarget = R() < .45 + (sp.stats.SHO - D.gk) / 260;
-    const sx = 94 + R() * 4, sy = 50 + (R() - .5) * 12;
-    if (!onTarget) { const kind = R() < .25 ? "block" : "wide"; ev.push({ m, type: kind, side: s, pid: sp.id, x: sx, y: R() < .5 ? 36 : 64, text: say(R, kind, { p: sp.name }) }); continue; }
-    st[s].sot++;
-    const goalProb = clamp(xg * 1.5 * (sp.stats.SHO / (D.gk * .9 + 6)) ** 1.1, .02, .85);
-    if (R() < goalProb) {
-      score[s]++; st[s].goals++; P(sp).g++;
-      if (assister) P(assister.p).a++;
-      if (k) P(k).base -= .25;
-      ev.push({ m, type: "goal", side: s, pid: sp.id, aid: assister?.p.id || null, x: 100, y: 50, scorer: sp.name, assist: assister?.p.name || null, score: { ...score },
-        text: say(R, "goal", { p: sp.name }) + (assister ? say(R, "assist", { a: assister.p.name }) : "") });
-    } else {
-      if (k) P(k).sv++;
-      ev.push({ m, type: "save", side: s, pid: sp.id, x: 97, y: sy, text: say(R, "save", { p: sp.name, k: k?.name || "the keeper" }) });
+    if (!onTarget) { const kind = R() < .25 ? "block" : "wide"; this.ev.push({ m, type: kind, side: s, pid: sp.id, x: 96, y: R() < .5 ? 36 : 64, text: say(R, kind, { p: sp.name }) }); }
+    else {
+      st[s].sot++;
+      const goalProb = clamp(xg * 1.75 * (sp.stats.SHO * shooter.eff / (D.gk * .9 + 6)) ** 1.1, .02, .85);
+      if (R() < goalProb) {
+        this.score[s]++; st[s].goals++; this.P(sp).g++;
+        if (assister) this.P(assister.p).a++;
+        if (k) this.P(k).base -= .25;
+        this.ev.push({ m, type: "goal", side: s, pid: sp.id, aid: assister?.p.id || null, x: 100, y: 50, scorer: sp.name, assist: assister?.p.name || null, score: { ...this.score },
+          text: say(R, "goal", { p: sp.name }) + (assister ? say(R, "assist", { a: assister.p.name }) : "") });
+      } else {
+        if (k) this.P(k).sv++;
+        this.ev.push({ m, type: "save", side: s, pid: sp.id, x: 97, y: 50 + (R() - .5) * 12, text: say(R, "save", { p: sp.name, k: k?.name || "the keeper" }) });
+      }
     }
-    if (R() < .012) { const v = pickW(R, attackers, () => 1).p; P(v).inj = true; ev.push({ m, type: "injury", side: s, text: say(R, "injury", { p: v.name }) }); }
+    if (R() < .012) { const v = pickW(R, attackers, () => 1).p; if (!this.hurt.has(v.id)) { this.P(v).inj = true; this.hurt.add(v.id); this.ev.push({ m, type: "injury", side: s, pid: v.id, text: say(R, "injury", { p: v.name }) }); this.prof(); } }
+    return this.ev.slice(before);
   }
-  function card(m, o) {
-    const pool = sides[o].xi.filter(e => e.p && !off[o].has(e.p.id) && LINE[e.slot] !== "gk");
-    const v = pickW(R, pool, e => ({ def: 2, mid: 1.6, fwd: .8 }[LINE[e.slot]])).p, ps = P(v);
-    st[o].fouls++;
-    if (ps.yc === 1 || R() < .04) { ps.rc = 1; off[o].add(v.id); st[o].red++; ev.push({ m, type: "red", side: o, x: 50, y: 50, text: say(R, "red", { p: v.name }) }); }
-    else { ps.yc = 1; st[o].yellow++; ev.push({ m, type: "yellow", side: o, x: 50, y: 50, text: say(R, "yellow", { p: v.name }) }); }
+  card(m, o) {
+    const R = this.R, pool = this.T[o].xi.filter(e => e.p && !this.off[o].has(e.p.id) && LINE[e.slot] !== "gk");
+    if (!pool.length) return;
+    const v = pickW(R, pool, e => ({ def: 2, mid: 1.6, fwd: .8 }[LINE[e.slot]])).p, ps = this.P(v);
+    this.st[o].fouls++;
+    if (ps.yc === 1 || R() < .04) { ps.rc = 1; this.off[o].add(v.id); this.st[o].red++; this.ev.push({ m, type: "red", side: o, pid: v.id, x: 50, y: 50, text: say(R, "red", { p: v.name }) }); this.prof(); }
+    else { ps.yc = 1; this.st[o].yellow++; this.ev.push({ m, type: "yellow", side: o, pid: v.id, x: 50, y: 50, text: say(R, "yellow", { p: v.name }) }); }
   }
-  ev.push({ m: 90, type: "fulltime", text: `Full-time: ${home.name} ${score.h}–${score.a} ${away.name}`, score: { ...score } });
-  const tot = possTicks.h + possTicks.a;
-  st.h.poss = Math.round(possTicks.h / tot * 100); st.a.poss = 100 - st.h.poss;
-  ["h", "a"].forEach(s => { st[s].xg = Math.round(st[s].xg * 100) / 100; });
-
-  // ratings 1–10
-  const ratings = {};
-  ["h", "a"].forEach(s => {
-    const T = sides[s], won = score[s] > score[s === "h" ? "a" : "h"], conceded = score[s === "h" ? "a" : "h"];
-    T.xi.forEach(e => {
-      if (!e.p) return; const q = pl[e.p.id];
-      let r = q.base + q.g * 1.1 + q.a * .7 + q.sv * .28 + q.sh * .05 - q.yc * .3 - q.rc * 1.5 + (won ? .35 : score.h === score.a ? .05 : -.25);
-      if (LINE[e.slot] === "def" || LINE[e.slot] === "gk") r += conceded === 0 ? .6 : -conceded * .2;
-      ratings[e.p.id] = Math.round(clamp(r, 3, 10) * 10) / 10;
+  finish() {
+    while (!this.done) this.step();
+    const st = this.st, score = this.score;
+    if (!this.ev.some(e => e.type === "fulltime")) this.ev.push({ m: 90, type: "fulltime", text: `Full-time: ${this.name("h")} ${score.h}–${score.a} ${this.name("a")}`, score: { ...score } });
+    const tot = this.poss.h + this.poss.a || 1;
+    st.h.poss = Math.round(this.poss.h / tot * 100); st.a.poss = 100 - st.h.poss;
+    ["h", "a"].forEach(s => { st[s].xg = Math.round(st[s].xg * 100) / 100; });
+    const ratings = {}, played = {};
+    ["h", "a"].forEach(s => {
+      const won = score[s] > score[s === "h" ? "a" : "h"], conceded = score[s === "h" ? "a" : "h"];
+      const rate = (p, slot) => {
+        const q = this.pl[p.id]; if (!q) return;
+        let r = q.base + q.g * 1.1 + q.a * .7 + q.sv * .28 + q.sh * .05 - q.yc * .3 - q.rc * 1.5 + (won ? .35 : score.h === score.a ? .05 : -.25);
+        if (LINE[slot] === "def" || LINE[slot] === "gk") r += conceded === 0 ? .6 : -conceded * .2;
+        ratings[p.id] = Math.round(clamp(r, 3, 10) * 10) / 10;
+      };
+      this.T[s].xi.forEach(e => { if (e.p) { rate(e.p, e.slot); played[e.p.id] = 90 - (this.on[e.p.id] || 0); } });
+      // players who were substituted off still get a rating
+      this.ev.filter(e => e.type === "sub" && e.side === s).forEach(e => { const q = this.pl[e.out]; if (q && ratings[e.out] == null) { ratings[e.out] = Math.round(clamp(q.base + q.g * 1.1 + q.a * .7 - .2, 3, 10) * 10) / 10; played[e.out] = this.mins[e.out]; } });
     });
-  });
-  const motm = Object.entries(ratings).sort((a, b) => b[1] - a[1])[0]?.[0];
-  return { score, stats: st, events: ev, players: pl, ratings, motm, xi: { h: H.xi, a: A.xi }, timeline: tl };
+    const motm = Object.entries(ratings).sort((a, b) => b[1] - a[1])[0]?.[0];
+    return { score, stats: st, events: this.ev, players: this.pl, ratings, motm, xi: this.xi, timeline: this.tl, stamina: this.stam, played, subs: this.subs };
+  }
 }
+
+export function simulate(home, away, opts = {}) { return new Match(home, away, opts).finish(); }
+
 function stat() { return { goals: 0, shots: 0, sot: 0, xg: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 50 }; }
 
 // quick result for background fixtures (same engine, events discarded)

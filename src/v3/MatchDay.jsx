@@ -1,7 +1,9 @@
 // Live match: broadcast-style score bug, animated 2D pitch, commentary, live stats, half-time and full-time screens.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Crest, PitchLines } from "./ui.jsx";
+import { rating } from "../engine/match.js";
 import { PitchAnimator } from "./animator.js";
+import { Match, MAX_SUBS } from "../engine/match.js";
 
 const ICON = { kickoff: "⚡", chance: "💨", wide: "↗", block: "🛡", save: "🧤", goal: "⚽", yellow: "🟨", red: "🟥", injury: "🤕", corner: "⛳", halftime: "⏸", fulltime: "🏁" };
 const SPEEDS = [{ k: 1, l: "1×", ms: 900 }, { k: 2, l: "2×", ms: 450 }, { k: 4, l: "4×", ms: 200 }];
@@ -11,7 +13,7 @@ const hex = h => { const n = h.replace("#", ""); const f = n.length === 3 ? n.sp
 const near = (a, b) => { const x = hex(a), y = hex(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 120; };
 export const kitColors = (h, a) => { const hc = h.c1; let ac = a.c1; if (near(hc, ac)) ac = !near(hc, a.c2) ? a.c2 : near(hc, "#ffffff") ? "#111111" : "#ffffff"; return [hc, ac]; };
 
-export default function MatchDay({ home, away, homeClub, awayClub, result, myIsHome, onDone }) {
+export default function MatchDay({ home, away, homeClub, awayClub, seed, myIsHome, onDone }) {
   const [HC, AC] = kitColors(homeClub, awayClub);
   const [minute, setMinute] = useState(0);
   const [shown, setShown] = useState(1);                 // number of events revealed
@@ -20,11 +22,17 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
   const [goalFlash, setGoalFlash] = useState(null);
   const [ht, setHt] = useState(false);
   const [ft, setFt] = useState(false);
-  const ev = result.events;
+  const M = useMemo(() => new Match(home, away, { seed }), []);
+  const [result, setResult] = useState(null);
+  const [, bump] = useState(0);
+  const [subOpen, setSubOpen] = useState(false);
+  const [subOut, setSubOut] = useState(null);
+  const mySide = myIsHome ? "h" : "a";
+  const ev = M.ev;
   const feedRef = useRef(null);
   const pitchRef = useRef(null), anim = useRef(null);
   useEffect(() => {                                   // the animated players and ball live outside React for smooth 60 fps
-    anim.current = new PitchAnimator(pitchRef.current, result.xi, { h: HC, a: AC });
+    anim.current = new PitchAnimator(pitchRef.current, M.xi, { h: HC, a: AC });
     return () => anim.current?.destroy();
   }, []);
   useEffect(() => { anim.current?.setSpeed(speed); }, [speed]);
@@ -32,12 +40,12 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
     if (!anim.current || minute < 1 || minute > 93) return;
     const evs = ev.filter(e => e.m === minute && e.type !== "halftime" && e.type !== "fulltime");
     const ms = SPEEDS.find(s => s.k === speed).ms;
-    anim.current.phase(result.timeline?.[minute], evs, ms * (1 + evs.length) / 1000 * speed);
+    anim.current.phase(M.tl[minute], evs, ms * (1 + evs.length) / 1000 * speed);
   }, [minute]);
 
   // the clock
   useEffect(() => {
-    if (paused || ht || ft || goalFlash) return;
+    if (paused || ht || ft || goalFlash || subOpen) return;
     const ms = SPEEDS.find(s => s.k === speed).ms;
     const t = setTimeout(() => {
       // reveal every event of this minute, then advance
@@ -55,20 +63,25 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
         }
         if (last.type === "halftime") { setHt(true); anim.current?.halftime(); return; }
         if (last.type === "fulltime") { setFt(true); return; }
+        if (last.type === "sub") anim.current?.replace(last.side, last.out, M.sides[last.side].players.find(p => p && p.id === last.in));
+        if (last.type === "red") anim.current?.sendOff(last.pid);
         return;
       }
+      if (M.done) { if (!result) { setResult(M.finish()); bump(x => x + 1); } return; }
+      M.step();                                         // play the next minute
       setMinute(m => m + 1);
     }, ms);
     return () => clearTimeout(t);
-  }, [minute, shown, paused, ht, ft, goalFlash, speed]);
+  }, [minute, shown, paused, ht, ft, goalFlash, speed, subOpen, result]);
 
   useEffect(() => { if (ht) { const t = setTimeout(() => { setHt(false); setMinute(46); }, speed === 4 ? 1200 : 3500); return () => clearTimeout(t); } }, [ht]);
   useEffect(() => { feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [shown]);
 
   const visible = ev.slice(0, shown);
   const score = visible.reduce((s, e) => (e.type === "goal" ? e.score : s), { h: 0, a: 0 });
-  const live = useMemo(() => liveStats(visible, result.stats, minute), [shown, minute]);
-  const skip = () => { setShown(ev.length); setMinute(90); setHt(false); setGoalFlash(null); setFt(true); };
+  const live = liveStats(visible, M);
+  const skip = () => { const r = M.finish(); setResult(r); setShown(M.ev.length); setMinute(93); setHt(false); setGoalFlash(null); setFt(true); };
+  const doSub = inId => { if (M.sub(mySide, subOut, inId)) { setSubOut(null); bump(x => x + 1); } };
 
   const scorers = side => visible.filter(e => e.type === "goal" && e.side === side).map(e => `${e.scorer.split(" ").slice(-1)[0]} ${e.m}'`);
   return (
@@ -120,11 +133,33 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
             {SPEEDS.map(s => <button key={s.k} className={"chip" + (speed === s.k ? " on" : "")} onClick={() => setSpeed(s.k)}>{s.l}</button>)}
             <button className="chip" onClick={() => setPaused(p => !p)}>{paused ? "▶ Play" : "⏸ Pause"}</button>
             <button className="chip" onClick={skip}>Skip ⏭</button>
+            {!ft && <button className={"chip subs" + (subOpen ? " on" : "")} onClick={() => setSubOpen(o => !o)}>🔁 Subs {M.subs[mySide]}/{MAX_SUBS}</button>}
           </div>
         </div>
       </div>
 
-      {ft && <FullTime result={result} homeClub={homeClub} awayClub={awayClub} myIsHome={myIsHome} onDone={onDone} />}
+      {subOpen && !ft && (
+        <div className="subpanel" role="dialog" aria-label="Substitutions">
+          <div className="sp-head"><b>Substitutions</b><span>{M.subs[mySide]}/{MAX_SUBS} used · {minute}'</span><button className="chip" onClick={() => { setSubOpen(false); setSubOut(null); }}>Resume ▶</button></div>
+          <div className="sp-cols">
+            <div><h5>On the pitch — tap who comes off</h5>
+              {M.sides[mySide].players.map((p, i) => p && (
+                <button key={p.id} className={"sp-row" + (subOut === p.id ? " sel" : "") + (M.off[mySide].has(p.id) ? " dis" : "")} disabled={M.off[mySide].has(p.id) || M.subs[mySide] >= MAX_SUBS} onClick={() => setSubOut(p.id)}>
+                  <span className="ps">{M.T[mySide].xi[i].slot}</span><span className="nm">{p.name}{M.hurt.has(p.id) ? " 🤕" : ""}{M.pl[p.id]?.yc ? " 🟨" : ""}</span>
+                  <span className="bar"><i style={{ width: `${M.stam[p.id]}%`, background: M.stam[p.id] > 70 ? "var(--green)" : M.stam[p.id] > 55 ? "var(--gold)" : "var(--red)" }} /></span><b>{Math.round(M.stam[p.id])}%</b>
+                </button>))}
+            </div>
+            <div><h5>Bench — tap who comes on</h5>
+              {M.bench[mySide].length === 0 && <p className="muted">No substitutes left.</p>}
+              {M.bench[mySide].map(p => (
+                <button key={p.id} className="sp-row in" disabled={!subOut} onClick={() => doSub(p.id)}>
+                  <span className="ps">{p.pos}</span><span className="nm">{p.name}</span><b>{rating(p)}</b>
+                </button>))}
+            </div>
+          </div>
+        </div>
+      )}
+      {ft && result && <FullTime result={result} homeClub={homeClub} awayClub={awayClub} myIsHome={myIsHome} onDone={() => onDone(result)} />}
     </div>
   );
 }
@@ -156,7 +191,7 @@ function FullTime({ result, homeClub, awayClub, myIsHome, onDone }) {
 }
 
 const pct = (a, b) => { const t = (+a || 0) + (+b || 0); return t ? Math.round((+a || 0) / t * 100) : 50; };
-function liveStats(vis, final, minute) {
+function liveStats(vis, M) {
   const o = { h: { shots: 0, sot: 0, xg: 0, corners: 0, cards: 0, poss: 50 }, a: { shots: 0, sot: 0, xg: 0, corners: 0, cards: 0, poss: 50 } };
   vis.forEach(e => {
     if (!e.side) return; const s = o[e.side];
@@ -165,9 +200,7 @@ function liveStats(vis, final, minute) {
     if (e.type === "corner") s.corners++;
     if (e.type === "yellow" || e.type === "red") s.cards++;
   });
-  // xG and possession converge to the real final numbers as the match goes on
-  const k = Math.min(1, minute / 90);
-  ["h", "a"].forEach(x => { o[x].xg = Math.round(final[x].xg * (o[x].shots / Math.max(1, final[x].shots)) * 100) / 100; });
-  o.h.poss = Math.round(50 + (final.h.poss - 50) * (0.4 + 0.6 * k)); o.a.poss = 100 - o.h.poss;
+  ["h", "a"].forEach(x => { o[x].xg = Math.round(M.st[x].xg * 100) / 100; });
+  const tot = M.poss.h + M.poss.a; o.h.poss = tot ? Math.round(M.poss.h / tot * 100) : 50; o.a.poss = 100 - o.h.poss;
   return o;
 }

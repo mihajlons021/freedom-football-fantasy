@@ -11,6 +11,7 @@ import { bootMusic, menuMusic, gameMusic, isMuted, setMuted, onMute } from "./mu
 const NAV = [
   { id: "home", ic: "⌂", l: "Home" },
   { id: "squad", ic: "◧", l: "Squad & Tactics" },
+  { id: "training", ic: "🏋", l: "Training" },
   { id: "match", ic: "⚽", l: "Match Day" },
   { id: "table", ic: "☰", l: "League Table" },
   { id: "fixtures", ic: "📅", l: "Fixtures" },
@@ -63,7 +64,8 @@ export default function App3() {
         <div className="content" key={view}>
           {view === "home" && <Home c={career} go={setView} open={setSheet} />}
           {view === "squad" && <Squad c={career} set={setCareer} say={say} />}
-          {view === "match" && <Match c={career} set={setCareer} go={setView} />}
+          {view === "match" && <Match c={career} set={setCareer} go={setView} open={setSheet} />}
+          {view === "training" && <Training c={career} set={setCareer} say={say} open={setSheet} />}
           {view === "table" && <Table c={career} open={setSheet} />}
           {view === "fixtures" && <Fixtures c={career} open={setSheet} />}
           {view === "transfers" && <Transfers c={career} set={setCareer} say={say} open={setSheet} />}
@@ -71,8 +73,9 @@ export default function App3() {
         </div>
       </main>
 
-      <nav className="mnav">{NAV.slice(0, 5).map(n => <button key={n.id} className={view === n.id ? "on" : ""} onClick={() => setView(n.id)}><span>{n.ic}</span>{n.l.split(" ")[0]}</button>)}</nav>
-      {sheet && <ClubSheet c={career} id={sheet} set={setCareer} say={say} onClose={() => setSheet(null)} />}
+      <nav className="mnav">{NAV.filter(n => ["home", "squad", "training", "match", "table"].includes(n.id)).map(n => <button key={n.id} className={view === n.id ? "on" : ""} onClick={() => setView(n.id)}><span>{n.ic}</span>{n.l.split(" ")[0]}</button>)}</nav>
+      {sheet && !String(sheet).startsWith("p:") && <ClubSheet c={career} id={sheet} set={setCareer} say={say} onClose={() => setSheet(null)} />}
+      {sheet && String(sheet).startsWith("p:") && <PlayerSheet c={career} pid={sheet.split(":")[1]} tab0={sheet.split(":")[2] || "train"} set={setCareer} say={say} onClose={() => setSheet(null)} />}
       {toast && <div className={"toast " + toast.kind} key={toast.id}>{toast.text}</div>}
     </div>
   );
@@ -233,42 +236,200 @@ function Squad({ c, set, say }) {
   );
 }
 
-/* ================= MATCH DAY ================= */
-function Match({ c, set, go }) {
+/* ================= MATCH DAY: squad selection, planned & automatic subs, kick-off ================= */
+const SUB_MINS = [46, 55, 60, 65, 70, 75, 80, 85];
+function Match({ c, set, go, open }) {
   const fx = C.myFixture(c);
   const [live, setLive] = useState(null);
   if (c.seasonOver || !fx) return <div className="card"><h3>No match this week</h3><p className="muted">The season is over — start the next one from the top bar.</p></div>;
   const hc = C.clubById(c, fx.h), ac = C.clubById(c, fx.a);
-  const myHome = fx.h === c.clubId;
-  if (live) return <MatchDay {...live} onDone={() => { set(C.finishWeek(c, live.result)); setLive(null); go("home"); }} />;
+  const myHome = fx.h === c.clubId, myClub = myHome ? hc : ac, opp = myHome ? ac : hc;
+  if (live) return <MatchDay {...live} onDone={res => { set(C.finishWeek(c, res)); setLive(null); go("home"); }} />;
+
+  const sq = C.squadOf(c, c.clubId).sort((a, b) => ({ GK: 0, CB: 1, LB: 1, RB: 1, CDM: 2, CM: 2, CAM: 2, LW: 3, RW: 3, ST: 3 }[a.pos] - { GK: 0, CB: 1, LB: 1, RB: 1, CDM: 2, CM: 2, CAM: 2, LW: 3, RW: 3, ST: 3 }[b.pos]) || rating(b) - rating(a));
+  const xi = c.lineup.xi.filter(Boolean);
+  const subs = c.subsBench || [];
+  const role = id => (xi.includes(id) ? "XI" : subs.includes(id) ? "SUB" : "");
+  const setSquad = (nx, ns) => set(C.setMatchSquad(c, nx, ns));
+  const cycle = p => {
+    if (p.injured) return;
+    const r = role(p.id);
+    if (r === "") { if (xi.length < 11) setSquad([...xi, p.id], subs); else if (subs.length < 7) setSquad(xi, [...subs, p.id]); }
+    else if (r === "XI") { const nx = xi.filter(id => id !== p.id); setSquad(nx, subs.length < 7 ? [...subs, p.id] : subs); }
+    else setSquad(xi, subs.filter(id => id !== p.id));
+  };
+  const autoSquad = () => {
+    const fresh = C.setFormation(c, c.formation);
+    const bench = C.squadOf(fresh, c.clubId).filter(p => !p.injured && !fresh.lineup.xi.includes(p.id)).sort((a, b) => rating(b) * (b.cond ?? 90) - rating(a) * (a.cond ?? 90)).slice(0, 7).map(p => p.id);
+    set({ ...fresh, subsBench: bench, plans: [] });
+  };
+  const plans = c.plans || [], auto = c.auto || { tired: 0, injured: true };
+  const setPlans = pl => set({ ...c, plans: pl });
+  const hasGK = xi.some(id => sq.find(p => p.id === id)?.pos === "GK");
+  const ready = xi.length === 11 && hasGK;
+  const byId = id => sq.find(p => p.id === id);
+  const mood = m => (m >= 80 ? "😄" : m >= 65 ? "🙂" : m >= 50 ? "😐" : m >= 35 ? "😟" : "😡");
+  const kick = () => {
+    const H = C.sideFor(c, fx.h), A = C.sideFor(c, fx.a);
+    setLive({ home: H, away: A, homeClub: hc, awayClub: ac, seed: Date.now(), myIsHome: myHome });
+  };
   const H = C.sideFor(c, fx.h), A = C.sideFor(c, fx.a);
   const r = s => Math.round(s.players.filter(Boolean).reduce((t, p) => t + rating(p), 0) / Math.max(1, s.players.filter(Boolean).length));
-  const kick = () => {
-    const result = simulate(H, A, { seed: Date.now() });
-    setLive({ home: H, away: A, homeClub: hc, awayClub: ac, result, myIsHome: myHome });
-  };
   return (
     <div className="pre">
       <div className="hero-card pre-head stadium" style={{ "--h": hc.c1, "--a": ac.c1 }}>
         <div className="kick">{C.LEAGUES[c.league].toUpperCase()} · WEEK {c.week}</div>
         <div className="nm-row">
-          <div className="nm-t"><Crest club={hc} size={96} /><b>{hc.name}</b><small>{H.formation} · {H.tactic}</small></div>
+          <div className="nm-t click" onClick={() => open(hc.id)}><Crest club={hc} size={86} /><b>{hc.name}</b><small>{H.formation} · {H.tactic}</small></div>
           <div className="nm-vs"><span>VS</span><small>{STADIA[myHome ? c.stadium : 2].n}</small></div>
-          <div className="nm-t"><Crest club={ac} size={96} /><b>{ac.name}</b><small>{A.formation} · {A.tactic}</small></div>
+          <div className="nm-t click" onClick={() => open(ac.id)}><Crest club={ac} size={86} /><b>{ac.name}</b><small>{A.formation} · {A.tactic}</small></div>
         </div>
         <div className="nm-bar"><span>{r(H)}</span><div><i style={{ width: `${r(H) / (r(H) + r(A)) * 100}%` }} /></div><span>{r(A)}</span></div>
         <div className="pre-btns">
-          <button className="btn soft" onClick={() => go("squad")}>Change lineup</button>
-          <button className="btn primary big kick" onClick={kick}>⚽ KICK OFF</button>
+          <button className="btn soft" onClick={() => go("squad")}>Formation & positions</button>
+          <button className="btn primary big kick" disabled={!ready} onClick={kick}>⚽ KICK OFF</button>
         </div>
+        {!ready && <p className="warnline">{xi.length < 11 ? `Pick ${11 - xi.length} more player${11 - xi.length > 1 ? "s" : ""} for the starting XI.` : "Your starting XI needs a goalkeeper."}</p>}
       </div>
-      <div className="pre-lineups">
-        {[[hc, H], [ac, A]].map(([cl, s]) => (
-          <section key={cl.id} className="card">
-            <div className="ch"><h3><Crest club={cl} size={22} /> {cl.name}</h3><span className="muted">{s.formation}</span></div>
-            {s.players.map((p, i) => p && <div key={p.id} className="lu" style={{ animationDelay: `${i * 40}ms` }}><Shirt club={cl} num={i + 1} size={26} gk={i === 0} /><span className="ps">{C.FORMATIONS[s.formation][i][0]}</span><span className="nm">{p.name}</span><b>{rating(p)}</b></div>)}
-          </section>
-        ))}
+
+      <div className="ms-grid">
+        <section className="card">
+          <div className="ch">
+            <h3>Match squad <small className="muted">XI {xi.length}/11 · Subs {subs.length}/7</small></h3>
+            <div className="ms-act">
+              <select className="inp" value={c.tactic} onChange={e => set({ ...c, tactic: e.target.value })}>{Object.keys(TACTICS).map(t => <option key={t}>{t}</option>)}</select>
+              <select className="inp" value={c.formation} onChange={e => set(C.setFormation(c, e.target.value))}>{Object.keys(C.FORMATIONS).map(f => <option key={f}>{f}</option>)}</select>
+              <button className="btn soft" onClick={autoSquad}>Auto-pick</button>
+            </div>
+          </div>
+          <p className="hint" style={{ textAlign: "left", marginTop: -4 }}>Tap the badge to move a player: — → XI → SUB → —. Injured players can't be picked.</p>
+          <div className="ms-list">
+            <div className="ms-row hd"><span /><span /><span>Pos</span><span>Player</span><span>Age</span><span>OVR</span><span>Fitness</span><span>Morale</span><span>Status</span></div>
+            {sq.map(p => { const rl = role(p.id), cond = Math.round(p.cond ?? 90), mor = Math.round(p.morale ?? 80); return (
+              <div key={p.id} className={"ms-row " + (rl ? "r-" + rl.toLowerCase() : "") + (p.injured ? " inj" : "")}>
+                <button className={"rb2 " + (rl || "none")} onClick={() => cycle(p)} disabled={p.injured}>{rl || "—"}</button>
+                <div className="rs-face click" onClick={() => open("p:" + p.id)}><Face p={p} size={34} /></div>
+                <span className="ps">{p.pos}</span>
+                <span className="nm click" onClick={() => open("p:" + p.id)}>{p.name}{p.promise ? " 🤝" : ""}</span>
+                <span className="mut">{p.age}</span>
+                <b className={"rs-r t-" + (rating(p) >= 86 ? "icon" : rating(p) >= 78 ? "gold" : rating(p) >= 68 ? "silver" : "bronze")}>{rating(p)}</b>
+                <span className="meter"><i style={{ width: `${cond}%`, background: cond > 80 ? "var(--green)" : cond > 62 ? "var(--gold)" : "var(--red)" }} /><em>{cond}%</em></span>
+                <span className="meter"><i style={{ width: `${mor}%`, background: mor > 70 ? "#38d6ff" : mor > 45 ? "var(--gold)" : "var(--red)" }} /><em>{mood(mor)} {mor}</em></span>
+                <span className={"st " + (p.injured ? "bad" : cond < 65 ? "warn" : "ok")}>{p.injured ? `🤕 ${p.injuryWeeks}w` : cond < 65 ? "Tired" : (p.sharp || 0) >= 3 ? "Sharp ⚡" : (p.sharp || 0) <= -3 ? "Unsettled" : "Ready"}</span>
+              </div>); })}
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="ch"><h3>🔁 Substitution plan</h3><span className="muted small">max {C.MAX_SUBS}</span></div>
+          {plans.map((pl, i) => (
+            <div key={i} className="plan">
+              <select className="inp" value={pl.min} onChange={e => setPlans(plans.map((q, j) => j === i ? { ...q, min: +e.target.value } : q))}>{SUB_MINS.map(m => <option key={m} value={m}>{m}'</option>)}</select>
+              <select className="inp" value={pl.out} onChange={e => setPlans(plans.map((q, j) => j === i ? { ...q, out: e.target.value } : q))}>{xi.map(id => <option key={id} value={id}>⬇ {byId(id)?.name}</option>)}</select>
+              <select className="inp" value={pl.in} onChange={e => setPlans(plans.map((q, j) => j === i ? { ...q, in: e.target.value } : q))}>{subs.map(id => <option key={id} value={id}>⬆ {byId(id)?.name}</option>)}</select>
+              <button className="chip" onClick={() => setPlans(plans.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+            </div>))}
+          <button className="btn soft" disabled={plans.length >= C.MAX_SUBS || !subs.length || xi.length < 11} onClick={() => setPlans([...plans, { min: 65, out: xi[xi.length - 1], in: subs.find(id => !plans.some(q => q.in === id)) || subs[0] }])}>+ Add planned substitution</button>
+          <div className="autos">
+            <h4>Automatic changes</h4>
+            <label className="chk"><input type="checkbox" checked={auto.injured} onChange={e => set({ ...c, auto: { ...auto, injured: e.target.checked } })} /> Replace injured players automatically</label>
+            <label className="chk">Replace tired players below
+              <select className="inp" value={auto.tired} onChange={e => set({ ...c, auto: { ...auto, tired: +e.target.value } })}>{[0, 55, 60, 65, 70, 75].map(v => <option key={v} value={v}>{v ? v + "% fitness" : "off"}</option>)}</select>
+            </label>
+            <p className="muted small">During the live match you can also pause and make changes yourself with the 🔁 Subs button.</p>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ================= TRAINING GROUND ================= */
+const QUICK = ["recovery", "massage", "treatment"];
+const SPECIFIC = ["fitness", "speed", "shooting", "passing", "dribbling", "defending", "tactical"];
+function Training({ c, set, say, open }) {
+  const sq = C.squadOf(c, c.clubId).sort((a, b) => rating(b) - rating(a));
+  const run = (pid, key) => { const r = C.train(c, pid, key); if (r.ok) set(r.c); say(r.msg, r.ok ? "ok" : "err"); };
+  const tired = sq.filter(p => !p.injured && (p.cond ?? 90) < 70).length, inj = sq.filter(p => p.injured).length;
+  return (
+    <div className="trg">
+      <div className="hero-card stadium trg-head">
+        <div><div className="kick">TRAINING GROUND · WEEK {c.week}</div><h2>Prepare your squad</h2>
+          <p className="muted">Each player can do <b>{C.SESSIONS_PER_WEEK} sessions</b> a week. Recovery and therapy bring fitness back, treatment heals injuries faster, specific training raises attributes. Talk to a player to lift his morale and match sharpness.</p></div>
+        <div className="kpis"><div className={tired ? "warn" : ""}><b>{tired}</b><small>NEED RECOVERY</small></div><div className={inj ? "bad" : ""}><b>{inj}</b><small>INJURED</small></div><div><b>{money(c.budget)}</b><small>BUDGET</small></div></div>
+      </div>
+      <div className="trg-list">
+        {sq.map(p => {
+          const cond = Math.round(p.cond ?? 90), mor = Math.round(p.morale ?? 80), used = p.tw || 0;
+          return (
+            <div key={p.id} className={"trg-row" + (p.injured ? " inj" : "")}>
+              <div className="rs-face click" onClick={() => open("p:" + p.id)}><Face p={p} size={44} /></div>
+              <div className="trg-n click" onClick={() => open("p:" + p.id)}><b>{p.name}</b><small>{p.pos} · {rating(p)} · {C.personality(p)}</small></div>
+              <span className="meter"><i style={{ width: `${cond}%`, background: cond > 80 ? "var(--green)" : cond > 62 ? "var(--gold)" : "var(--red)" }} /><em>Fit {cond}%</em></span>
+              <span className="meter"><i style={{ width: `${mor}%`, background: mor > 70 ? "#38d6ff" : mor > 45 ? "var(--gold)" : "var(--red)" }} /><em>Morale {mor}</em></span>
+              <span className={"st " + (p.injured ? "bad" : "ok")}>{p.injured ? `🤕 ${p.injuryWeeks}w` : (p.sharp || 0) >= 3 ? "Sharp ⚡" : "Ready"}</span>
+              <span className="dots">{[...Array(C.SESSIONS_PER_WEEK)].map((_, i) => <i key={i} className={i < used ? "on" : ""} />)}</span>
+              <div className="trg-b">
+                {QUICK.map(k => { const S = C.SESSIONS[k], why = C.canTrain(p, k); return <button key={k} className="tb" title={`${S.label}${S.cost ? ` · ${money(S.cost)}` : ""}${why ? " — " + why : ""}`} disabled={!!why} onClick={() => run(p.id, k)}>{S.icon}</button>; })}
+                <select className="inp tsel" value="" disabled={p.injured || used >= C.SESSIONS_PER_WEEK} onChange={e => e.target.value && run(p.id, e.target.value)}>
+                  <option value="">Specific training…</option>
+                  {SPECIFIC.map(k => <option key={k} value={k}>{C.SESSIONS[k].icon} {C.SESSIONS[k].label}</option>)}
+                </select>
+                <button className="btn soft sm" onClick={() => open("p:" + p.id + ":talk")} disabled={p.talked}>{p.talked ? "Talked ✓" : "💬 Talk"}</button>
+              </div>
+            </div>);
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ================= PLAYER PROFILE: training + team talk ================= */
+function PlayerSheet({ c, pid, tab0 = "train", set, say, onClose }) {
+  const p = c.players.find(x => x.id === pid);
+  const [tab, setTab] = useState(tab0);
+  const [reply, setReply] = useState(null);
+  useEffect(() => { const k = e => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
+  if (!p) return null;
+  const mine = p.clubId === c.clubId, cl = C.clubById(c, p.clubId);
+  const per = C.personality(p), P = C.PERSONALITIES[per];
+  const cond = Math.round(p.cond ?? 90), mor = Math.round(p.morale ?? 80), sharp = p.sharp || 0;
+  const run = key => { const r = C.train(c, p.id, key); if (r.ok) set(r.c); say(r.msg, r.ok ? "ok" : "err"); };
+  const speak = key => { const r = C.talk(c, p.id, key); if (r.ok) { set(r.c); setReply(r); } else setReply({ reply: r.reply, mood: "down" }); };
+  return (
+    <div className="sheet-wrap" onClick={onClose}>
+      <div className="sheet psheet" onClick={e => e.stopPropagation()} role="dialog" aria-label={p.name}>
+        <button className="sheet-x" onClick={onClose} aria-label="Close">✕</button>
+        <div className="ps-left">
+          <PlayerCard p={p} club={cl} />
+          <div className="ps-per"><span>{P.icon}</span><div><b>{per}</b><small>{P.note}</small></div></div>
+          <div className="ps-bars">
+            <label>Fitness <b>{cond}%</b></label><span className="meter big"><i style={{ width: `${cond}%`, background: cond > 80 ? "var(--green)" : cond > 62 ? "var(--gold)" : "var(--red)" }} /></span>
+            <label>Morale <b>{mor}</b></label><span className="meter big"><i style={{ width: `${mor}%`, background: mor > 70 ? "#38d6ff" : mor > 45 ? "var(--gold)" : "var(--red)" }} /></span>
+            <label>Match sharpness <b>{sharp > 0 ? "+" : ""}{sharp}</b></label><span className="meter big mid"><i style={{ left: sharp < 0 ? `${50 + sharp * 8}%` : "50%", width: `${Math.abs(sharp) * 8}%`, background: sharp >= 0 ? "var(--green)" : "var(--red)" }} /></span>
+            {p.injured && <div className="injbox">🤕 Injured — {p.injuryWeeks} week{p.injuryWeeks > 1 ? "s" : ""} out</div>}
+          </div>
+        </div>
+        <div className="ps-right">
+          <h2>{p.name}</h2>
+          <p className="muted">{p.pos} · {p.age} years · {cl?.name || "Free agent"} · sessions this week {p.tw || 0}/{C.SESSIONS_PER_WEEK}</p>
+          {mine ? <>
+            <div className="tabs" style={{ margin: "12px 0" }}><button className={"tab" + (tab === "train" ? " on" : "")} onClick={() => setTab("train")}>🏋 Training</button><button className={"tab" + (tab === "talk" ? " on" : "")} onClick={() => setTab("talk")}>💬 Talk</button></div>
+            {tab === "train" && <>
+              <div className="prog">{["PAC", "SHO", "PAS", "DRI", "DEF", "PHY"].map(k => <div key={k}><span>{k}</span><b>{p.stats[k]}</b><span className="meter"><i style={{ width: `${Math.min(100, p.prog?.[k] || 0)}%`, background: "var(--purple)" }} /></span></div>)}</div>
+              <div className="sess">{Object.entries(C.SESSIONS).map(([k, S]) => { const why = C.canTrain(p, k); return (
+                <button key={k} className="ses" disabled={!!why} onClick={() => run(k)} title={why || ""}>
+                  <span className="ic">{S.icon}</span><div><b>{S.label}</b><small>{S.desc}</small>
+                    <em>{[S.cond ? `fitness ${S.cond > 0 ? "+" : ""}${S.cond}` : null, S.stat ? `${S.stat} progress` : null, S.morale ? `morale +${S.morale}` : null, S.sharp ? `sharpness +${S.sharp}` : null, S.heal ? "heals 1 week" : null, S.cost ? money(S.cost) : null].filter(Boolean).join(" · ")}</em></div>
+                </button>); })}</div>
+            </>}
+            {tab === "talk" && <>
+              <p className="muted small">One talk per week. How he reacts depends on his personality ({per}), his morale and his form.</p>
+              <div className="talks">{C.TALKS.map(t => <button key={t.k} className={"tk " + t.kind} disabled={p.talked} onClick={() => speak(t.k)}>“{t.text}”</button>)}</div>
+              {reply && <div className={"bubble " + (reply.mood || "")}><b>{p.name.split(" ").filter(w => !w.endsWith(".")).pop() || p.name}:</b> {reply.reply}{reply.dm != null && <small> (morale {reply.dm >= 0 ? "+" : ""}{reply.dm}, sharpness {reply.ds >= 0 ? "+" : ""}{reply.ds})</small>}</div>}
+            </>}
+          </> : <p className="muted" style={{ marginTop: 14 }}>Not your player — sign him in Transfers to train and talk to him.</p>}
+        </div>
       </div>
     </div>
   );
