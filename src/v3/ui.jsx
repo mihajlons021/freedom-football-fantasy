@@ -16,61 +16,85 @@ export function Crest({ club, size = 44 }) {
   if (!club) return <div style={{ width: size, height: size * 1.16 }} />;
   const { id, c1 = "#444", c2 = "#fff", pat = "solid", abbr = "?", vM = 100 } = club;
   const kind = ["shield", "round", "banner", "modern"][hashC(id) % 4];
-  const k = `cr-${id}`, light = isLight(c1), ink = light ? "#111" : "#fff";
+  const k = `cr-${id}`, light = isLight(c1);
   const stars = vM >= 1200 ? 3 : vM >= 800 ? 2 : vM >= 500 ? 1 : 0;
   const SH = {
-    shield: "M50 4 L92 16 L92 56 C92 86 72 104 50 112 C28 104 8 86 8 56 L8 16 Z",
-    banner: "M10 10 H90 V60 C90 88 70 104 50 112 C30 104 10 88 10 60 Z",
-    modern: "M18 6 H82 Q94 6 94 18 V74 Q94 96 50 112 Q6 96 6 74 V18 Q6 6 18 6 Z",
+    shield: "M50 4 L93 16 L93 56 C93 87 72 105 50 113 C28 105 7 87 7 56 L7 16 Z",
+    banner: "M8 8 H92 V60 C92 89 71 105 50 113 C29 105 8 89 8 60 Z",
+    modern: "M18 5 H82 Q95 5 95 18 V74 Q95 97 50 113 Q5 97 5 74 V18 Q5 5 18 5 Z",
+    round: "M50 9 A49 49 0 1 1 49.99 9 Z",
   };
-  const fillPattern = (
+  const outer = SH[kind];
+  const sc = (f) => `translate(50 ${kind === "round" ? 58 : 58}) scale(${f}) translate(-50 -58)`;
+  const pattern = (
     <>
       <rect width="100" height="116" fill={c1} />
-      {pat === "vstrip" && [0, 1, 2, 3].map(i => <rect key={i} x={12 + i * 22} y="0" width="11" height="116" fill={c2} />)}
-      {pat === "hstrip" && [0, 1, 2, 3].map(i => <rect key={i} x="0" y={24 + i * 22} width="100" height="10" fill={c2} />)}
+      {pat === "vstrip" && [0, 1, 2, 3].map(i => <rect key={i} x={13 + i * 22} y="0" width="11" height="116" fill={c2} />)}
+      {pat === "hstrip" && [0, 1, 2, 3].map(i => <rect key={i} x="0" y={26 + i * 22} width="100" height="10" fill={c2} />)}
       {pat === "half" && <rect x="50" y="0" width="50" height="116" fill={c2} />}
-      {pat === "solid" && kind !== "banner" && <path d="M0 84 L100 64 L100 116 L0 116 Z" fill={c2} />}
+      {pat === "solid" && kind !== "banner" && <path d="M0 88 L100 66 L100 116 L0 116 Z" fill={c2} />}
+      {kind === "banner" && <><rect x="0" y="0" width="100" height="40" fill={light ? "#151b30" : "#f4f1e8"} /></>}
     </>
   );
+  const emX = 50, emY = kind === "banner" ? 74 : kind === "round" ? 47 : 40, emR = kind === "banner" ? 14 : 11;
+  const txtY = kind === "banner" ? 30 : kind === "round" ? 82 : 76;
+  const txtCol = kind === "banner" ? (light ? "#f4f1e8" : "#151b30") : (light ? "#151515" : "#ffffff");
+  const fs = abbr.length > 3 ? (kind === "round" ? 16 : 20) : (kind === "round" ? 20 : 26);
   return (
-    <svg viewBox="0 0 100 116" width={size} height={size * 1.16} style={{ display: "block", flexShrink: 0, filter: "drop-shadow(0 4px 10px rgba(0,0,0,.5))" }} aria-hidden="true">
+    <svg viewBox="0 -4 100 124" width={size} height={size * 1.24} style={{ display: "block", flexShrink: 0, overflow: "visible" }} aria-hidden="true">
       <defs>
-        <linearGradient id={k + "m"} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff6d6" /><stop offset=".35" stopColor="#d9b25a" /><stop offset=".6" stopColor="#8a6a22" /><stop offset="1" stopColor="#f3d98a" /></linearGradient>
-        <linearGradient id={k + "g"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".38" /><stop offset=".45" stopColor="#fff" stopOpacity="0" /></linearGradient>
-        <radialGradient id={k + "v"} cx=".5" cy=".4" r=".7"><stop offset=".6" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".35" /></radialGradient>
-        {kind === "round" ? <clipPath id={k}><circle cx="50" cy="58" r="36" /></clipPath> : <clipPath id={k}><path d={SH[kind]} /></clipPath>}
+        {/* brushed-gold metal */}
+        <linearGradient id={k + "m"} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff4c8" /><stop offset=".18" stopColor="#e7c66a" /><stop offset=".42" stopColor="#9c7424" /><stop offset=".55" stopColor="#f6dc8c" /><stop offset=".78" stopColor="#8a651c" /><stop offset="1" stopColor="#f0d27a" />
+        </linearGradient>
+        <linearGradient id={k + "m2"} x1="1" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#fff1bf" /><stop offset=".5" stopColor="#a47b27" /><stop offset="1" stopColor="#5f4310" /></linearGradient>
+        {/* real lighting on the rim = raised metal bevel */}
+        <filter id={k + "b"} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="bl" />
+          <feSpecularLighting in="bl" surfaceScale="4" specularConstant="1.1" specularExponent="22" lightingColor="#fff" result="sp"><feDistantLight azimuth="225" elevation="42" /></feSpecularLighting>
+          <feComposite in="sp" in2="SourceAlpha" operator="in" result="spi" />
+          <feComposite in="SourceGraphic" in2="spi" operator="arithmetic" k1="0" k2="1" k3=".75" k4="0" />
+        </filter>
+        <filter id={k + "d"} x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#000" floodOpacity=".55" /></filter>
+        <filter id={k + "i"}><feGaussianBlur stdDeviation="2.4" /></filter>
+        <radialGradient id={k + "l"} cx=".32" cy=".22" r=".85"><stop offset="0" stopColor="#fff" stopOpacity=".42" /><stop offset=".45" stopColor="#fff" stopOpacity=".05" /><stop offset="1" stopColor="#000" stopOpacity=".42" /></radialGradient>
+        <linearGradient id={k + "gl"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <radialGradient id={k + "ball"} cx=".35" cy=".3" r=".75"><stop offset="0" stopColor="#fff" /><stop offset=".7" stopColor="#d9dce3" /><stop offset="1" stopColor="#8d93a3" /></radialGradient>
+        <clipPath id={k + "c"}><path d={outer} transform={sc(.84)} /></clipPath>
       </defs>
-      {kind === "round" ? (
-        <>
-          <circle cx="50" cy="58" r="48" fill={`url(#${k}m)`} />
-          <circle cx="50" cy="58" r="44" fill={c2 === "#fff" || isLight(c2) ? "#141a2e" : c2} />
-          <g clipPath={`url(#${k})`}>{fillPattern}<rect width="100" height="116" fill={`url(#${k}v)`} /><rect width="100" height="60" fill={`url(#${k}g)`} /></g>
-          <circle cx="50" cy="58" r="36" fill="none" stroke={`url(#${k}m)`} strokeWidth="2.5" />
-          {[...Array(stars)].map((_, i) => <text key={i} x={40 + i * 10 - (stars - 1) * 5 + 5} y="21" textAnchor="middle" fontSize="9" fill="#ffd76a">★</text>)}
-          {BALL(50, 46, 9, light ? "#111" : c1)}
-          <text x="50" y="80" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 17 : 21} fill={ink} stroke={light ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.5)"} strokeWidth="1" paintOrder="stroke">{abbr}</text>
-        </>
-      ) : (
-        <>
-          <path d={SH[kind]} transform="translate(50 58) scale(1.08) translate(-50 -58)" fill={`url(#${k}m)`} />
-          <g clipPath={`url(#${k})`}>
-            {fillPattern}
-            {kind === "banner" && <><rect x="0" y="10" width="100" height="30" fill={light ? "#141a2e" : "#fff"} /><rect x="0" y="40" width="100" height="3" fill={`url(#${k}m)`} /></>}
-            <rect width="100" height="116" fill={`url(#${k}v)`} /><rect width="100" height="56" fill={`url(#${k}g)`} />
-          </g>
-          <path d={SH[kind]} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="1.2" />
-          {[...Array(stars)].map((_, i) => <text key={i} x={50 + (i - (stars - 1) / 2) * 11} y={kind === "banner" ? 8 : 3} dy="6" textAnchor="middle" fontSize="10" fill="#ffd76a" stroke="#6b4f10" strokeWidth=".4">★</text>)}
-          {kind === "banner"
-            ? <>
-                <text x="50" y="33" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 18 : 22} fill={light ? "#fff" : "#141a2e"}>{abbr}</text>
-                {BALL(50, 72, 13, light ? "#111" : c1)}
-              </>
-            : <>
-                {BALL(50, kind === "modern" ? 36 : 38, 10, light ? "#111" : c1)}
-                <text x="50" y="72" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 22 : 27} fill={ink} stroke={light ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.5)"} strokeWidth="1.2" paintOrder="stroke">{abbr}</text>
-              </>}
-        </>
-      )}
+      <g filter={`url(#${k}d)`}>
+        {/* metal rim with lit bevel */}
+        <path d={outer} fill={`url(#${k}m)`} filter={`url(#${k}b)`} />
+        <path d={outer} transform={sc(.9)} fill={`url(#${k}m2)`} />
+        {/* enamel field */}
+        <g clipPath={`url(#${k}c)`}>
+          {pattern}
+          <rect x="-10" y="-10" width="120" height="140" fill={`url(#${k}l)`} />
+          {/* inner shadow under the rim */}
+          <path d={outer} transform={sc(.84)} fill="none" stroke="#000" strokeOpacity=".55" strokeWidth="7" filter={`url(#${k}i)`} />
+        </g>
+        <path d={outer} transform={sc(.84)} fill="none" stroke="#3b2a06" strokeOpacity=".6" strokeWidth=".8" />
+        {/* emblem: 3D ball */}
+        <g>
+          <circle cx={emX} cy={emY + 1.5} r={emR} fill="#000" opacity=".35" filter={`url(#${k}i)`} />
+          <circle cx={emX} cy={emY} r={emR} fill={`url(#${k}ball)`} stroke="#2b2b2b" strokeWidth=".8" />
+          <path d={`M${emX} ${emY - emR * .42} l${emR * .4} ${emR * .29} l${-emR * .15} ${emR * .46} h${-emR * .5} l${-emR * .15} ${-emR * .46} Z`} fill="#1c1c1c" />
+          {[0, 72, 144, 216, 288].map(a => { const r = (a - 90) * Math.PI / 180; return <path key={a} d={`M${emX + Math.cos(r) * emR * .52} ${emY + Math.sin(r) * emR * .52} L${emX + Math.cos(r) * emR * .98} ${emY + Math.sin(r) * emR * .98}`} stroke="#1c1c1c" strokeWidth={emR * .14} />; })}
+        </g>
+        {/* embossed letters: shadow, highlight, face */}
+        <g fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={fs} textAnchor="middle" letterSpacing=".5">
+          <text x="50.6" y={txtY + 1.2} fill="#000" opacity=".55">{abbr}</text>
+          <text x="49.6" y={txtY - .7} fill="#fff" opacity=".45">{abbr}</text>
+          <text x="50" y={txtY} fill={txtCol}>{abbr}</text>
+        </g>
+        {/* glass gloss */}
+        <path d={outer} transform={sc(.84)} fill={`url(#${k}gl)`} clipPath={`url(#${k}c)`} style={{ mixBlendMode: "screen" }} opacity=".0" />
+        <g clipPath={`url(#${k}c)`}><ellipse cx="38" cy="22" rx="48" ry="22" fill={`url(#${k}gl)`} opacity=".55" /></g>
+        {/* stars */}
+        {[...Array(stars)].map((_, i) => (
+          <text key={i} x={50 + (i - (stars - 1) / 2) * 12} y={kind === "round" ? 6 : 1.5} textAnchor="middle" fontSize="11" fill={`url(#${k}m)`} stroke="#5a400c" strokeWidth=".5" filter={`url(#${k}b)`}>★</text>
+        ))}
+      </g>
     </svg>
   );
 }
@@ -138,14 +162,25 @@ export function ShirtSVG({ club, num, size = 40, gk = false }) {
   );
 }
 
-/* ---------- player photo: ChatGPT portraits in /art/players/p1..p24.webp, picked by player id; initials until then ---------- */
+/* ---------- player photo: ChatGPT portraits in /art/players/p1..p24.webp, picked by player id; a silhouette if a photo is missing ---------- */
 const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 export function Face({ p, size }) {
   const [ok, setOk] = useState(true);
   const n = (hash(p.id + p.name) % 24) + 1;
   return ok
     ? <img className="face-img" src={`/art/players/p${n}.webp`} alt="" width={size} height={size} onError={() => setOk(false)} />
-    : <span>{initials(p.name)}</span>;
+    : <Silhouette />;
+}
+
+export function Silhouette() {
+  return (
+    <svg className="sil" viewBox="0 0 64 64" aria-hidden="true">
+      <defs><linearGradient id="silg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3a4566" /><stop offset="1" stopColor="#141b30" /></linearGradient></defs>
+      <rect width="64" height="64" rx="32" fill="url(#silg)" />
+      <circle cx="32" cy="25" r="11" fill="#8a96ba" />
+      <path d="M10 60 C12 44 22 38 32 38 C42 38 52 44 54 60 Z" fill="#8a96ba" />
+    </svg>
+  );
 }
 
 /* ---------- number that counts up ---------- */

@@ -4,7 +4,7 @@ import "./v3.css";
 import * as C from "../engine/career.js";
 import { simulate, rating, TACTICS } from "../engine/match.js";
 import { STADIA } from "../data.js";
-import { Crest, PlayerCard, PitchToken, PitchLines, money, Form, CountUp, Shirt, Kit, SpinBall } from "./ui.jsx";
+import { Crest, PlayerCard, PitchToken, PitchLines, money, Form, CountUp, Shirt, Kit, SpinBall, Face } from "./ui.jsx";
 import MatchDay from "./MatchDay.jsx";
 import { bootMusic, menuMusic, gameMusic, isMuted, setMuted, onMute } from "./music.js";
 
@@ -22,6 +22,7 @@ export default function App3() {
   const [career, setCareer] = useState(() => C.loadCareer());
   const [view, setView] = useState("home");
   const [toast, setToast] = useState(null);
+  const [sheet, setSheet] = useState(null);           // club profile overlay
   useEffect(() => { if (career) C.saveCareer(career); }, [career]);
   useEffect(() => { bootMusic(); }, []);
   useEffect(() => { if (career) gameMusic(); else menuMusic(); }, [!!career]);
@@ -60,17 +61,18 @@ export default function App3() {
           </div>
         </header>
         <div className="content" key={view}>
-          {view === "home" && <Home c={career} go={setView} />}
+          {view === "home" && <Home c={career} go={setView} open={setSheet} />}
           {view === "squad" && <Squad c={career} set={setCareer} say={say} />}
           {view === "match" && <Match c={career} set={setCareer} go={setView} />}
-          {view === "table" && <Table c={career} />}
-          {view === "fixtures" && <Fixtures c={career} />}
-          {view === "transfers" && <Transfers c={career} set={setCareer} say={say} />}
+          {view === "table" && <Table c={career} open={setSheet} />}
+          {view === "fixtures" && <Fixtures c={career} open={setSheet} />}
+          {view === "transfers" && <Transfers c={career} set={setCareer} say={say} open={setSheet} />}
           {view === "club" && <Club c={career} set={setCareer} say={say} />}
         </div>
       </main>
 
       <nav className="mnav">{NAV.slice(0, 5).map(n => <button key={n.id} className={view === n.id ? "on" : ""} onClick={() => setView(n.id)}><span>{n.ic}</span>{n.l.split(" ")[0]}</button>)}</nav>
+      {sheet && <ClubSheet c={career} id={sheet} set={setCareer} say={say} onClose={() => setSheet(null)} />}
       {toast && <div className={"toast " + toast.kind} key={toast.id}>{toast.text}</div>}
     </div>
   );
@@ -126,7 +128,7 @@ function Picker({ onStart }) {
 }
 
 /* ================= HOME ================= */
-function Home({ c, go }) {
+function Home({ c, go, open }) {
   const club = C.myClub(c), fx = C.myFixture(c);
   const opp = fx && C.clubById(c, fx.h === c.clubId ? fx.a : fx.h);
   const home = fx && fx.h === c.clubId;
@@ -159,7 +161,7 @@ function Home({ c, go }) {
         <section className="card">
           <div className="ch"><h3>League</h3><button className="lnk" onClick={() => go("table")}>Full table →</button></div>
           <table className="tbl"><tbody>{around.map(r => { const cl = C.clubById(c, r.id); const p = st.indexOf(r) + 1; return (
-            <tr key={r.id} className={r.id === c.clubId ? "me" : ""}><td className="ps">{p}</td><td className="tn"><span><Crest club={cl} size={18} /><span className="cn">{cl.name}</span></span></td><td>{r.p}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td className="pt">{r.pts}</td></tr>); })}</tbody></table>
+            <tr key={r.id} className={"click " + (r.id === c.clubId ? "me" : "")} onClick={() => open(r.id)}><td className="ps">{p}</td><td className="tn"><span><Crest club={cl} size={18} /><span className="cn">{cl.name}</span></span></td><td>{r.p}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td className="pt">{r.pts}</td></tr>); })}</tbody></table>
         </section>
         <section className="card">
           <div className="ch"><h3>News</h3></div>
@@ -273,7 +275,7 @@ function Match({ c, set, go }) {
 }
 
 /* ================= TABLE ================= */
-function Table({ c }) {
+function Table({ c, open }) {
   const st = C.standings(c), n = st.length;
   const top = c.league === "FPL" ? 1 : 4;
   return (
@@ -282,7 +284,7 @@ function Table({ c }) {
       <div className="tscroll"><table className="tbl full">
         <thead><tr><th>#</th><th className="tn">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Form</th><th>Pts</th></tr></thead>
         <tbody>{st.map((r, i) => { const cl = C.clubById(c, r.id); return (
-          <tr key={r.id} className={(r.id === c.clubId ? "me " : "") + (i < top ? "z1" : i >= n - (c.league === "FCL" ? 0 : 4) ? "z3" : "")}>
+          <tr key={r.id} onClick={() => open(r.id)} className={"click " + (r.id === c.clubId ? "me " : "") + (i < top ? "z1" : i >= n - (c.league === "FCL" ? 0 : 4) ? "z3" : "")}>
             <td className="ps">{i + 1}</td><td className="tn"><span><Crest club={cl} size={20} /><span className="cn">{cl.name}</span></span></td><td>{r.p}</td><td>{r.w}</td><td>{r.d}</td><td>{r.l}</td><td>{r.gf}</td><td>{r.ga}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td><Form f={r.form} /></td><td className="pt">{r.pts}</td>
           </tr>); })}</tbody>
       </table></div>
@@ -291,7 +293,7 @@ function Table({ c }) {
 }
 
 /* ================= FIXTURES ================= */
-function Fixtures({ c }) {
+function Fixtures({ c, open }) {
   const [w, setW] = useState(Math.min(c.week, c.fixtures.length));
   const games = C.weekFixtures(c, w);
   return (
@@ -299,41 +301,101 @@ function Fixtures({ c }) {
       <div className="ch"><h3>Week {w}</h3><div className="wk"><button className="chip" disabled={w <= 1} onClick={() => setW(w - 1)}>‹</button><input type="range" min={1} max={c.fixtures.length} value={w} onChange={e => setW(+e.target.value)} /><button className="chip" disabled={w >= c.fixtures.length} onClick={() => setW(w + 1)}>›</button></div></div>
       <div className="fxl">{games.map((g, i) => { const h = C.clubById(c, g.h), a = C.clubById(c, g.a), mine = g.h === c.clubId || g.a === c.clubId; return (
         <div key={i} className={"fx" + (mine ? " me" : "")}>
-          <span className="th">{h.name}<Crest club={h} size={22} /></span>
+          <span className="th click" onClick={() => open(h.id)}>{h.name}<Crest club={h} size={22} /></span>
           <b className="fs">{g.hs === null ? "vs" : `${g.hs} – ${g.as}`}</b>
-          <span className="ta"><Crest club={a} size={22} />{a.name}</span>
+          <span className="ta click" onClick={() => open(a.id)}><Crest club={a} size={22} />{a.name}</span>
         </div>); })}</div>
     </section>
   );
 }
 
 /* ================= TRANSFERS ================= */
-function Transfers({ c, set, say }) {
+function Transfers({ c, set, say, open }) {
   const [tab, setTab] = useState("buy");
   const [pos, setPos] = useState("All");
   const [q, setQ] = useState("");
   const [max, setMax] = useState("");
+  const [club, setClub] = useState("all");
   const POS = ["All", "GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
   const mine = C.squadOf(c, c.clubId);
   const list = (tab === "buy" ? c.players.filter(p => p.clubId !== c.clubId) : mine)
-    .filter(p => (pos === "All" || p.pos === pos) && (!q || p.name.toLowerCase().includes(q.toLowerCase())) && (!max || C.priceOf(p) <= +max * 1e6))
+    .filter(p => (club === "all" || p.clubId === club) && (pos === "All" || p.pos === pos) && (!q || p.name.toLowerCase().includes(q.toLowerCase())) && (!max || C.priceOf(p) <= +max * 1e6))
     // players you can afford first (best first), then the dream signings
     .sort((a, b) => tab === "sell" ? rating(b) - rating(a) : ((C.priceOf(b) <= c.budget) - (C.priceOf(a) <= c.budget)) || rating(b) - rating(a)).slice(0, 60);
   return (
     <div className="trn">
       <div className="trn-bar">
         <div className="tabs"><button className={"tab" + (tab === "buy" ? " on" : "")} onClick={() => setTab("buy")}>Buy players</button><button className={"tab" + (tab === "sell" ? " on" : "")} onClick={() => setTab("sell")}>Sell players</button></div>
+        {tab === "buy" && <select className="inp" value={club} onChange={e => setClub(e.target.value)}>
+          <option value="all">All clubs</option><option value="free">Free agents</option>
+          {[...c.clubs].filter(x => x.id !== c.clubId).sort((a, b) => a.name.localeCompare(b.name)).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>}
         <select className="inp" value={pos} onChange={e => setPos(e.target.value)}>{POS.map(p => <option key={p}>{p}</option>)}</select>
         <input className="inp" placeholder="Search name" value={q} onChange={e => setQ(e.target.value)} />
         {tab === "buy" && <input className="inp" type="number" min={0} placeholder="Max price (M)" value={max} onChange={e => setMax(e.target.value)} />}
         <span className="kpi"><small>BUDGET</small><b>{money(c.budget)}</b></span>
       </div>
+      {tab === "buy" && club !== "all" && club !== "free" && (() => { const cl = C.clubById(c, club); return (
+        <div className="hero-card stadium club-band" style={{ "--h": cl.c1, "--a": cl.c2 }}>
+          <Crest club={cl} size={86} />
+          <div className="cb-t"><div className="kick">{cl.lg.toUpperCase()}</div><h2>{cl.name}</h2><span>Team rating {C.teamRating(c, cl.id)} · {C.squadOf(c, cl.id).length} players</span></div>
+          <div className="cl-kits"><Kit club={cl} size={92} /><Kit club={cl} size={74} gk /></div>
+          <button className="btn soft" onClick={() => open(cl.id)}>Club profile</button>
+        </div>); })()}
       <div className="cards">{list.map(p => { const cl = p.clubId === "free" ? null : C.clubById(c, p.clubId); const price = C.priceOf(p); return (
         <PlayerCard key={p.id} p={p} club={cl} extra={
           <div className="pc-buy">
             <span>{tab === "buy" ? money(price) : `+${money(Math.round(price * .85))}`}</span>
             <i onClick={e => { e.stopPropagation(); const n = tab === "buy" ? C.buyPlayer(c, p.id) : C.sellPlayer(c, p.id); if (n) { set(n); say(tab === "buy" ? `Signed ${p.name}!` : `${p.name} sold`); } else say(tab === "buy" ? (c.budget < price ? "Not enough budget" : "Squad is full (26)") : "Keep at least 16 players", "err"); }}>{tab === "buy" ? "Sign" : "Sell"}</i>
           </div>} />); })}</div>
+    </div>
+  );
+}
+
+/* ================= CLUB PROFILE (any club): 3D crest, kits and the full squad ================= */
+const LINES = [["Goalkeepers", ["GK"]], ["Defenders", ["CB", "LB", "RB"]], ["Midfielders", ["CDM", "CM", "CAM"]], ["Forwards", ["LW", "RW", "ST"]]];
+function ClubSheet({ c, id, set, say, onClose }) {
+  const cl = C.clubById(c, id), mine = id === c.clubId;
+  const sq = C.squadOf(c, id).sort((a, b) => rating(b) - rating(a));
+  useEffect(() => { const k = e => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
+  const row = c.table[id];
+  const tier = r => (r >= 86 ? "icon" : r >= 78 ? "gold" : r >= 68 ? "silver" : "bronze");
+  return (
+    <div className="sheet-wrap" onClick={onClose}>
+      <div className="sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label={cl.name}>
+        <button className="sheet-x" onClick={onClose} aria-label="Close">✕</button>
+        <div className="hero-card stadium sheet-head" style={{ "--h": cl.c1, "--a": cl.c2 }}>
+          <Crest club={cl} size={130} />
+          <div className="sh-t">
+            <div className="kick">{cl.lg.toUpperCase()}{mine ? " · YOUR CLUB" : ""}</div>
+            <h2>{cl.name}</h2>
+            <div className="sh-k">
+              <span><b>{C.teamRating(c, id)}</b>RATING</span><span><b>{sq.length}</b>PLAYERS</span>
+              {row && <span><b>{row.pts}</b>POINTS</span>}<span><b>{money(sq.reduce((t, p) => t + C.priceOf(p), 0))}</b>SQUAD VALUE</span>
+            </div>
+            {row && <Form f={row.form} />}
+          </div>
+          <div className="cl-kits"><Kit club={cl} size={118} /><Kit club={cl} size={92} gk /></div>
+        </div>
+        <div className="roster">
+          {LINES.map(([title, ps]) => { const g = sq.filter(p => ps.includes(p.pos)); if (!g.length) return null; return (
+            <section key={title}>
+              <h4>{title} <small>{g.length}</small></h4>
+              {g.map((p, i) => (
+                <div key={p.id} className="rs" style={{ animationDelay: `${i * 30}ms` }}>
+                  <div className="rs-face"><Face p={p} size={40} /></div>
+                  <Shirt club={cl} size={26} gk={p.pos === "GK"} />
+                  <span className="rs-pos">{p.pos}</span>
+                  <span className="rs-nm">{p.name}{p.injured ? " 🤕" : ""}</span>
+                  <span className="rs-age">{p.age}y</span>
+                  <b className={"rs-r t-" + tier(rating(p))}>{rating(p)}</b>
+                  <span className="rs-v">{money(C.priceOf(p))}</span>
+                  {!mine && <button className="btn primary sm" onClick={() => { const n = C.buyPlayer(c, p.id); if (n) { set(n); say(`Signed ${p.name}!`); } else say(c.budget < C.priceOf(p) ? "Not enough budget" : "Squad is full (26)", "err"); }}>Sign</button>}
+                </div>
+              ))}
+            </section>); })}
+        </div>
+      </div>
     </div>
   );
 }
