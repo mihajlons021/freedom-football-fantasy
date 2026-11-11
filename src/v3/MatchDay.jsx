@@ -1,9 +1,10 @@
 // Live match: broadcast-style score bug, animated 2D pitch, commentary, live stats, half-time and full-time screens.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Crest, PitchLines } from "./ui.jsx";
+import { PitchAnimator } from "./animator.js";
 
 const ICON = { kickoff: "⚡", chance: "💨", wide: "↗", block: "🛡", save: "🧤", goal: "⚽", yellow: "🟨", red: "🟥", injury: "🤕", corner: "⛳", halftime: "⏸", fulltime: "🏁" };
-const SPEEDS = [{ k: 1, l: "1×", ms: 520 }, { k: 2, l: "2×", ms: 260 }, { k: 4, l: "4×", ms: 110 }];
+const SPEEDS = [{ k: 1, l: "1×", ms: 900 }, { k: 2, l: "2×", ms: 450 }, { k: 4, l: "4×", ms: 200 }];
 
 // away team switches to its second colour (or white) when the shirts would clash
 const hex = h => { const n = h.replace("#", ""); const f = n.length === 3 ? n.split("").map(c => c + c).join("") : n; return [0, 2, 4].map(i => parseInt(f.slice(i, i + 2), 16)); };
@@ -19,9 +20,20 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
   const [goalFlash, setGoalFlash] = useState(null);
   const [ht, setHt] = useState(false);
   const [ft, setFt] = useState(false);
-  const [ball, setBall] = useState({ x: 50, y: 50 });
   const ev = result.events;
   const feedRef = useRef(null);
+  const pitchRef = useRef(null), anim = useRef(null);
+  useEffect(() => {                                   // the animated players and ball live outside React for smooth 60 fps
+    anim.current = new PitchAnimator(pitchRef.current, result.xi, { h: HC, a: AC });
+    return () => anim.current?.destroy();
+  }, []);
+  useEffect(() => { anim.current?.setSpeed(speed); }, [speed]);
+  useEffect(() => {                                   // every new minute becomes a phase of play on the pitch
+    if (!anim.current || minute < 1 || minute > 93) return;
+    const evs = ev.filter(e => e.m === minute && e.type !== "halftime" && e.type !== "fulltime");
+    const ms = SPEEDS.find(s => s.k === speed).ms;
+    anim.current.phase(result.timeline?.[minute], evs, ms * (1 + evs.length) / 1000 * speed);
+  }, [minute]);
 
   // the clock
   useEffect(() => {
@@ -34,14 +46,18 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
       if (n !== shown) {
         const last = ev[n - 1];
         setShown(n);
-        if (last.type === "goal") { setGoalFlash(last); setTimeout(() => setGoalFlash(null), speed === 4 ? 1100 : 2300); }
-        if (last.type === "halftime") { setHt(true); return; }
+        if (last.type === "goal") {
+          // let the ball reach the net, then the big GOAL moment, then the other team kicks off
+          const inNet = anim.current ? anim.current.score(last.side, last.pid) : 0;
+          setGoalFlash({ ...last, pending: true });                       // stops the clock while the ball flies in
+          setTimeout(() => { anim.current?.goal(last.side); setGoalFlash(last); }, inNet);
+          setTimeout(() => { setGoalFlash(null); anim.current?.kickoff(last.side === "h" ? "a" : "h"); }, inNet + (speed === 4 ? 1300 : 2900));
+        }
+        if (last.type === "halftime") { setHt(true); anim.current?.halftime(); return; }
         if (last.type === "fulltime") { setFt(true); return; }
-        if (last.x != null) setBall(toPitch(last));
         return;
       }
       setMinute(m => m + 1);
-      setBall(b => ({ x: Math.max(18, Math.min(82, b.x + (Math.random() - .5) * 26)), y: Math.max(12, Math.min(88, b.y + (Math.random() - .5) * 30)) }));
     }, ms);
     return () => clearTimeout(t);
   }, [minute, shown, paused, ht, ft, goalFlash, speed]);
@@ -53,18 +69,6 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
   const score = visible.reduce((s, e) => (e.type === "goal" ? e.score : s), { h: 0, a: 0 });
   const live = useMemo(() => liveStats(visible, result.stats, minute), [shown, minute]);
   const skip = () => { setShown(ev.length); setMinute(90); setHt(false); setGoalFlash(null); setFt(true); };
-
-  // players on the pitch: formation spots that lean towards the ball
-  const dots = useMemo(() => {
-    const lean = (ball.x - 50) / 50;
-    const mk = (xi, side) => xi.map((e, i) => {
-      if (!e.p) return null;
-      let x = side === "h" ? e.x : 100 - e.x, y = side === "h" ? e.y : 100 - e.y;
-      x += lean * (i === 0 ? 4 : 13); y += (ball.y - 50) * .12;
-      return { id: e.p.id, side, x: Math.max(3, Math.min(97, x)), y: Math.max(4, Math.min(96, y)), n: e.p.name.split(" ").slice(-1)[0], gk: i === 0 };
-    }).filter(Boolean);
-    return [...mk(result.xi.h, "h"), ...mk(result.xi.a, "a")];
-  }, [ball]);
 
   const scorers = side => visible.filter(e => e.type === "goal" && e.side === side).map(e => `${e.scorer.split(" ").slice(-1)[0]} ${e.m}'`);
   return (
@@ -82,10 +86,11 @@ export default function MatchDay({ home, away, homeClub, awayClub, result, myIsH
 
       <div className="md-grid">
         <div className="md-pitch">
+          <div className="md-turf" aria-hidden="true"><img src="/art/pitch.webp" alt="" onError={e => (e.currentTarget.style.display = "none")} /></div>
           <PitchLines />
-          {dots.map(d => <div key={d.id} className={"dot " + d.side + (d.gk ? " gk" : "")} style={{ left: `${d.x}%`, top: `${d.y}%`, "--c": d.side === "h" ? HC : AC }}><span>{d.n}</span></div>)}
-          <div className="ball" style={{ left: `${ball.x}%`, top: `${ball.y}%` }} />
-          {goalFlash && (
+          <div className="goalnet l" /><div className="goalnet r" />
+          <div className="md-layer" ref={pitchRef} />
+          {goalFlash && !goalFlash.pending && (
             <div className="goal-flash" style={{ "--c": goalFlash.side === "h" ? HC : AC }}>
               <div className="g1">GOAL!</div>
               <div className="g2">{goalFlash.scorer}{goalFlash.assist ? <small> · assist {goalFlash.assist}</small> : null}</div>
@@ -151,10 +156,6 @@ function FullTime({ result, homeClub, awayClub, myIsHome, onDone }) {
 }
 
 const pct = (a, b) => { const t = (+a || 0) + (+b || 0); return t ? Math.round((+a || 0) / t * 100) : 50; };
-function toPitch(e) {           // engine coordinates are "attacking to the right" for the side on the ball
-  if (e.x == null) return { x: 50, y: 50 };
-  return e.side === "a" ? { x: 100 - e.x, y: 100 - e.y } : { x: e.x, y: e.y };
-}
 function liveStats(vis, final, minute) {
   const o = { h: { shots: 0, sot: 0, xg: 0, corners: 0, cards: 0, poss: 50 }, a: { shots: 0, sot: 0, xg: 0, corners: 0, cards: 0, poss: 50 } };
   vis.forEach(e => {

@@ -97,6 +97,7 @@ export function simulate(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}
   [H, A].forEach(T => T.xi.forEach(e => e.p && P(e.p)));
   const off = { h: new Set(), a: new Set() };
   let score = { h: 0, a: 0 }, possTicks = { h: 0, a: 0 };
+  const tl = [];   // per-minute timeline for the animated pitch: who has the ball, did it lead to a chance, which lane
 
   for (let m = 1; m <= 90 + 3; m++) {
     if (m === 46) ev.push({ m: 45, type: "halftime", text: `Half-time: ${home.name} ${score.h}–${score.a} ${away.name}` });
@@ -104,6 +105,7 @@ export function simulate(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}
     const ph = H.mid * fatigue("h") / (H.mid * fatigue("h") + A.mid * fatigue("a"));
     const s = R() < ph ? "h" : "a", o = s === "h" ? "a" : "h";
     possTicks[s] += 1;
+    tl[m] = { s, chance: false, zy: 50, depth: .35 + R() * .35 };
     const T = sides[s], D = sides[o];
     const man = n => 11 - off[n].size;
     // chance of an attack turning into a real chance
@@ -111,37 +113,38 @@ export function simulate(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}
     const losingBall = (s === "h" ? ph : 1 - ph) < .5;
     if (losingBall && T.T.counter) pChance *= 1 + T.T.counter;
     if (R() > pChance) {
-      if (R() < .06) { st[s].corners++; if (R() < .4) ev.push({ m, type: "corner", side: s, x: 98, y: R() < .5 ? 2 : 98, text: say(R, "corner", { t: (s === "h" ? home : away).name }) }); }
+      if (R() < .06) { st[s].corners++; if (R() < .4) ev.push({ m, type: "corner", side: s, flagY: R() < .5 ? 0 : 100, x: 98, y: R() < .5 ? 2 : 98, text: say(R, "corner", { t: (s === "h" ? home : away).name }) }); }
       if (R() < .045) card(m, o);
       continue;
     }
     // zone of the attack
     const zone = R() < .32 + T.T.wide * .5 ? (R() < .5 ? "left" : "right") : "centre";
     const zy = zone === "left" ? 18 : zone === "right" ? 82 : 50;
+    tl[m].chance = true; tl[m].zy = zy;
     const attackers = T.xi.filter(e => e.p && !off[s].has(e.p.id) && LINE[e.slot] !== "gk");
     const shooter = pickW(R, attackers, e => ({ fwd: 6, mid: 2.6, def: .5 }[LINE[e.slot]]) * (e.p.stats.SHO / 60) ** 2 * (zone !== "centre" && (e.slot === "LW" || e.slot === "RW") ? 1.6 : 1));
     const helpers = attackers.filter(e => e !== shooter);
     const assister = R() < .72 ? pickW(R, helpers, e => (e.p.stats.PAS / 60) ** 2 * ({ fwd: 1.4, mid: 2, def: .7 }[LINE[e.slot]])) : null;
     const sp = shooter.p;
-    ev.push({ m, type: "chance", side: s, x: 70 + R() * 10, y: zy + (R() - .5) * 20, text: say(R, "chance", { p: sp.name, z: zone === "centre" ? "through the middle" : "down the " + zone }) });
+    ev.push({ m, type: "chance", side: s, pid: sp.id, aid: assister?.p.id || null, x: 70 + R() * 10, y: zy + (R() - .5) * 20, text: say(R, "chance", { p: sp.name, z: zone === "centre" ? "through the middle" : "down the " + zone }) });
     // quality of the chance
     let xg = clamp(.022 + R() * R() * .31 + (sp.stats.SHO - D.gk) / 650 + (sp.stats.DRI - D.def) / 1300, .01, .6);
     st[s].shots++; st[s].xg += xg; P(sp).sh++;
     const k = D.xi[0].p;
     const onTarget = R() < .45 + (sp.stats.SHO - D.gk) / 260;
     const sx = 94 + R() * 4, sy = 50 + (R() - .5) * 12;
-    if (!onTarget) { const kind = R() < .25 ? "block" : "wide"; ev.push({ m, type: kind, side: s, x: sx, y: R() < .5 ? 36 : 64, text: say(R, kind, { p: sp.name }) }); continue; }
+    if (!onTarget) { const kind = R() < .25 ? "block" : "wide"; ev.push({ m, type: kind, side: s, pid: sp.id, x: sx, y: R() < .5 ? 36 : 64, text: say(R, kind, { p: sp.name }) }); continue; }
     st[s].sot++;
     const goalProb = clamp(xg * 1.5 * (sp.stats.SHO / (D.gk * .9 + 6)) ** 1.1, .02, .85);
     if (R() < goalProb) {
       score[s]++; st[s].goals++; P(sp).g++;
       if (assister) P(assister.p).a++;
       if (k) P(k).base -= .25;
-      ev.push({ m, type: "goal", side: s, x: 100, y: 50, scorer: sp.name, assist: assister?.p.name || null, score: { ...score },
+      ev.push({ m, type: "goal", side: s, pid: sp.id, aid: assister?.p.id || null, x: 100, y: 50, scorer: sp.name, assist: assister?.p.name || null, score: { ...score },
         text: say(R, "goal", { p: sp.name }) + (assister ? say(R, "assist", { a: assister.p.name }) : "") });
     } else {
       if (k) P(k).sv++;
-      ev.push({ m, type: "save", side: s, x: 97, y: sy, text: say(R, "save", { p: sp.name, k: k?.name || "the keeper" }) });
+      ev.push({ m, type: "save", side: s, pid: sp.id, x: 97, y: sy, text: say(R, "save", { p: sp.name, k: k?.name || "the keeper" }) });
     }
     if (R() < .012) { const v = pickW(R, attackers, () => 1).p; P(v).inj = true; ev.push({ m, type: "injury", side: s, text: say(R, "injury", { p: v.name }) }); }
   }
@@ -169,7 +172,7 @@ export function simulate(home, away, { seed = Date.now(), homeBoost = 2.5 } = {}
     });
   });
   const motm = Object.entries(ratings).sort((a, b) => b[1] - a[1])[0]?.[0];
-  return { score, stats: st, events: ev, players: pl, ratings, motm, xi: { h: H.xi, a: A.xi } };
+  return { score, stats: st, events: ev, players: pl, ratings, motm, xi: { h: H.xi, a: A.xi }, timeline: tl };
 }
 function stat() { return { goals: 0, shots: 0, sot: 0, xg: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 50 }; }
 

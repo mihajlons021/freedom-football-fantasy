@@ -4,8 +4,9 @@ import "./v3.css";
 import * as C from "../engine/career.js";
 import { simulate, rating, TACTICS } from "../engine/match.js";
 import { STADIA } from "../data.js";
-import { Crest, PlayerCard, PitchToken, PitchLines, money, Form } from "./ui.jsx";
+import { Crest, PlayerCard, PitchToken, PitchLines, money, Form, CountUp, Shirt } from "./ui.jsx";
 import MatchDay from "./MatchDay.jsx";
+import { bootMusic, menuMusic, gameMusic, isMuted, setMuted, onMute } from "./music.js";
 
 const NAV = [
   { id: "home", ic: "⌂", l: "Home" },
@@ -22,6 +23,8 @@ export default function App3() {
   const [view, setView] = useState("home");
   const [toast, setToast] = useState(null);
   useEffect(() => { if (career) C.saveCareer(career); }, [career]);
+  useEffect(() => { bootMusic(); }, []);
+  useEffect(() => { if (career) gameMusic(); else menuMusic(); }, [!!career]);
   const say = (text, kind = "ok") => { setToast({ text, kind, id: Date.now() }); setTimeout(() => setToast(t => (t && Date.now() - t.id > 2900 ? null : t)), 3000); };
 
   if (!career) return <Picker onStart={c => { setCareer(c); setView("home"); }} />;
@@ -34,7 +37,7 @@ export default function App3() {
     <div className="v3">
       <aside className="side">
         <div className="brand"><div className="logo">FFM</div><div><b>FREEDOM</b><small>FOOTBALL MANAGER</small></div></div>
-        <div className="me">
+        <div className="myclub">
           <Crest club={club} size={42} />
           <div><b>{club.name}</b><small>{C.LEAGUES[career.league]}</small></div>
         </div>
@@ -49,7 +52,8 @@ export default function App3() {
         <header className="top">
           <div className="tl"><h1>{NAV.find(n => n.id === view)?.l}</h1><span className="meta">Season {career.season} · Week {Math.min(career.week, career.fixtures.length)} / {career.fixtures.length}</span></div>
           <div className="tr">
-            <span className="kpi"><small>BUDGET</small><b>{money(career.budget)}</b></span>
+            <MuteBtn />
+            <span className="kpi"><small>BUDGET</small><b><CountUp value={career.budget} fmt={money} /></b></span>
             <span className="kpi"><small>POSITION</small><b>{pos}{ord(pos)}</b></span>
             {!career.seasonOver && opp && <button className="btn primary" onClick={() => setView("match")}>Next: {fx.h === career.clubId ? "vs" : "at"} {opp.abbr} →</button>}
             {career.seasonOver && <button className="btn gold" onClick={() => { setCareer(C.newSeason(career)); setView("home"); say("New season started!"); }}>Start season {career.season + 1} →</button>}
@@ -71,6 +75,11 @@ export default function App3() {
     </div>
   );
 }
+function MuteBtn() {
+  const [m, setM] = useState(isMuted());
+  useEffect(() => onMute(setM), []);
+  return <button className="mute" onClick={() => setMuted(!m)} aria-label={m ? "Turn music on" : "Mute music"} title={m ? "Music off" : "Music on"}>{m ? "🔇" : "🔊"}</button>;
+}
 const ord = n => ["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] || "th";
 
 /* ================= CLUB PICKER ================= */
@@ -85,6 +94,7 @@ function Picker({ onStart }) {
   const stars = r => r >= 90 ? 1 : r >= 84 ? 2 : r >= 78 ? 3 : r >= 72 ? 4 : 5;
   return (
     <div className="pick">
+      <div className="pick-mute"><MuteBtn /></div>
       <div className="pick-hero">
         <div className="pick-art" aria-hidden="true"><img src="/art/hero.webp" alt="" onError={e => (e.currentTarget.style.display = "none")} /></div>
         <div className="kick">FREEDOM FOOTBALL MANAGER</div>
@@ -131,7 +141,7 @@ function Home({ c, go }) {
       {c.seasonOver ? (
         <div className="hero-card season-end"><div className="kick">SEASON {c.season} COMPLETE</div><h2>{club.name} finished {C.position(c)}{ord(C.position(c))}</h2><p>Start the next season from the top bar.</p></div>
       ) : opp && (
-        <div className="hero-card nm" style={{ "--h": (home ? club : opp).c1, "--a": (home ? opp : club).c1 }}>
+        <div className="hero-card nm stadium" style={{ "--h": (home ? club : opp).c1, "--a": (home ? opp : club).c1 }}>
           <div className="nm-top"><span className="kick">NEXT MATCH · WEEK {c.week}</span><span className="pill">{home ? "HOME" : "AWAY"}</span></div>
           <div className="nm-row">
             <div className="nm-t"><Crest club={home ? club : opp} size={84} /><b>{(home ? club : opp).name}</b><Form f={c.table[(home ? club : opp).id].form} /></div>
@@ -146,7 +156,7 @@ function Home({ c, go }) {
         <section className="card">
           <div className="ch"><h3>League</h3><button className="lnk" onClick={() => go("table")}>Full table →</button></div>
           <table className="tbl"><tbody>{around.map(r => { const cl = C.clubById(c, r.id); const p = st.indexOf(r) + 1; return (
-            <tr key={r.id} className={r.id === c.clubId ? "me" : ""}><td className="ps">{p}</td><td className="tn"><span><Crest club={cl} size={18} />{cl.name}</span></td><td>{r.p}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td className="pt">{r.pts}</td></tr>); })}</tbody></table>
+            <tr key={r.id} className={r.id === c.clubId ? "me" : ""}><td className="ps">{p}</td><td className="tn"><span><Crest club={cl} size={18} /><span className="cn">{cl.name}</span></span></td><td>{r.p}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td className="pt">{r.pts}</td></tr>); })}</tbody></table>
         </section>
         <section className="card">
           <div className="ch"><h3>News</h3></div>
@@ -155,7 +165,7 @@ function Home({ c, go }) {
         <section className="card">
           <div className="ch"><h3>Squad status</h3><button className="lnk" onClick={() => go("squad")}>Squad →</button></div>
           <div className="kpis">
-            <div><b>{myR}</b><small>TEAM RATING</small></div>
+            <div><b><CountUp value={myR} /></b><small>TEAM RATING</small></div>
             <div><b>{sq.length}</b><small>PLAYERS</small></div>
             <div className={inj.length ? "bad" : ""}><b>{inj.length}</b><small>INJURED</small></div>
             <div className={tired.length ? "warn" : ""}><b>{tired.length}</b><small>LOW FITNESS</small></div>
@@ -204,7 +214,7 @@ function Squad({ c, set, say }) {
           <PitchLines vertical />
           {slots.map(([pos, x, y], i) => (
             <div key={i} className="slot" style={{ left: `${y}%`, top: `${100 - x * .92 - 3}%` }}>
-              <PitchToken p={xi[i]} slot={pos} selected={pick?.kind === "xi" && pick.idx === i} onClick={() => swap({ kind: "xi", idx: i })} />
+              <PitchToken p={xi[i]} slot={pos} club={C.myClub(c)} num={i + 1} selected={pick?.kind === "xi" && pick.idx === i} onClick={() => swap({ kind: "xi", idx: i })} />
             </div>
           ))}
         </div>
@@ -234,7 +244,7 @@ function Match({ c, set, go }) {
   };
   return (
     <div className="pre">
-      <div className="hero-card pre-head" style={{ "--h": hc.c1, "--a": ac.c1 }}>
+      <div className="hero-card pre-head stadium" style={{ "--h": hc.c1, "--a": ac.c1 }}>
         <div className="kick">{C.LEAGUES[c.league].toUpperCase()} · WEEK {c.week}</div>
         <div className="nm-row">
           <div className="nm-t"><Crest club={hc} size={96} /><b>{hc.name}</b><small>{H.formation} · {H.tactic}</small></div>
@@ -251,7 +261,7 @@ function Match({ c, set, go }) {
         {[[hc, H], [ac, A]].map(([cl, s]) => (
           <section key={cl.id} className="card">
             <div className="ch"><h3><Crest club={cl} size={22} /> {cl.name}</h3><span className="muted">{s.formation}</span></div>
-            {s.players.map((p, i) => p && <div key={p.id} className="lu"><span className="ps">{C.FORMATIONS[s.formation][i][0]}</span><span className="nm">{p.name}</span><b>{rating(p)}</b></div>)}
+            {s.players.map((p, i) => p && <div key={p.id} className="lu" style={{ animationDelay: `${i * 40}ms` }}><Shirt club={cl} num={i + 1} size={26} gk={i === 0} /><span className="ps">{C.FORMATIONS[s.formation][i][0]}</span><span className="nm">{p.name}</span><b>{rating(p)}</b></div>)}
           </section>
         ))}
       </div>
@@ -270,7 +280,7 @@ function Table({ c }) {
         <thead><tr><th>#</th><th className="tn">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Form</th><th>Pts</th></tr></thead>
         <tbody>{st.map((r, i) => { const cl = C.clubById(c, r.id); return (
           <tr key={r.id} className={(r.id === c.clubId ? "me " : "") + (i < top ? "z1" : i >= n - (c.league === "FCL" ? 0 : 4) ? "z3" : "")}>
-            <td className="ps">{i + 1}</td><td className="tn"><span><Crest club={cl} size={20} />{cl.name}</span></td><td>{r.p}</td><td>{r.w}</td><td>{r.d}</td><td>{r.l}</td><td>{r.gf}</td><td>{r.ga}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td><Form f={r.form} /></td><td className="pt">{r.pts}</td>
+            <td className="ps">{i + 1}</td><td className="tn"><span><Crest club={cl} size={20} /><span className="cn">{cl.name}</span></span></td><td>{r.p}</td><td>{r.w}</td><td>{r.d}</td><td>{r.l}</td><td>{r.gf}</td><td>{r.ga}</td><td>{r.gd > 0 ? "+" : ""}{r.gd}</td><td><Form f={r.form} /></td><td className="pt">{r.pts}</td>
           </tr>); })}</tbody>
       </table></div>
     </section>

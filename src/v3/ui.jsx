@@ -1,4 +1,5 @@
 // Shared visual pieces: club crest, player cards, pitch.
+import { useEffect, useRef, useState } from "react";
 import { rating } from "../engine/match.js";
 
 /* ---------- club crest (drawn from the club colours — no real logos) ---------- */
@@ -30,6 +31,53 @@ export function Crest({ club, size = 44 }) {
 }
 function isLight(hex) { const h = hex.replace("#", ""); const n = h.length === 3 ? h.split("").map(c => c + c).join("") : h; const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16); return (r * 299 + g * 587 + b * 114) / 1000 > 165; }
 
+/* ---------- football shirt (club colours + pattern, shaded) ---------- */
+export function Shirt({ club, num, size = 40, gk = false }) {
+  const { id = "x", c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
+  const body = gk ? "#ffcc4d" : c1, trim = gk ? "#1b1b1b" : c2;
+  const k = `sh-${id}-${gk ? "g" : "o"}`;
+  const P = "M30 6 L42 10 Q50 18 58 10 L70 6 L92 22 L82 40 L72 35 L72 92 Q50 98 28 92 L28 35 L18 40 L8 22 Z";
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{ display: "block", filter: "drop-shadow(0 3px 5px rgba(0,0,0,.45))" }} aria-hidden="true">
+      <defs>
+        <clipPath id={k}><path d={P} /></clipPath>
+        <linearGradient id={k + "s"} x1="0" x2="1"><stop offset="0" stopColor="#000" stopOpacity=".28" /><stop offset=".35" stopColor="#fff" stopOpacity=".12" /><stop offset=".65" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".3" /></linearGradient>
+      </defs>
+      <g clipPath={`url(#${k})`}>
+        <rect width="100" height="100" fill={body} />
+        {!gk && pat === "vstrip" && [0, 1, 2, 3, 4].map(i => <rect key={i} x={14 + i * 16} y="0" width="8" height="100" fill={trim} />)}
+        {!gk && pat === "hstrip" && [0, 1, 2, 3].map(i => <rect key={i} x="0" y={22 + i * 20} width="100" height="9" fill={trim} />)}
+        {!gk && pat === "half" && <rect x="50" y="0" width="50" height="100" fill={trim} />}
+        <path d="M8 22 L18 40 L28 35 L28 30 Z M92 22 L82 40 L72 35 L72 30 Z" fill={trim} opacity=".85" />
+        <rect width="100" height="100" fill={`url(#${k}s)`} />
+        <path d="M36 70 Q50 64 64 70" stroke="rgba(0,0,0,.12)" strokeWidth="3" fill="none" />
+      </g>
+      <path d="M42 10 Q50 18 58 10" fill="none" stroke={trim} strokeWidth="4" />
+      <path d={P} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="1.5" />
+      {num != null && <text x="50" y="62" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize="30" fill={isLight(body) ? "#111" : "#fff"} stroke={isLight(body) ? "rgba(255,255,255,.5)" : "rgba(0,0,0,.4)"} strokeWidth="1" paintOrder="stroke">{num}</text>}
+    </svg>
+  );
+}
+
+/* ---------- player photo: ChatGPT portraits in /art/players/p1..p24.webp, picked by player id; initials until then ---------- */
+const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+export function Face({ p, size }) {
+  const [ok, setOk] = useState(true);
+  const n = (hash(p.id + p.name) % 24) + 1;
+  return ok
+    ? <img className="face-img" src={`/art/players/p${n}.webp`} alt="" width={size} height={size} onError={() => setOk(false)} />
+    : <span>{initials(p.name)}</span>;
+}
+
+/* ---------- number that counts up ---------- */
+export function CountUp({ value, fmt = v => Math.round(v).toLocaleString(), ms = 900 }) {
+  const [v, setV] = useState(0); const from = useRef(0);
+  useEffect(() => { const a = from.current, b = +value || 0, t0 = performance.now(); let raf;
+    const st = t => { const k = Math.min(1, (t - t0) / ms), e = 1 - (1 - k) ** 3; setV(a + (b - a) * e); if (k < 1) raf = requestAnimationFrame(st); else from.current = b; };
+    raf = requestAnimationFrame(st); return () => cancelAnimationFrame(raf); }, [value]);
+  return <>{fmt(v)}</>;
+}
+
 /* ---------- player cards ---------- */
 export const tierOf = r => (r >= 86 ? "icon" : r >= 78 ? "gold" : r >= 68 ? "silver" : "bronze");
 const STATS = ["PAC", "SHO", "PAS", "DRI", "DEF", "PHY"];
@@ -44,7 +92,7 @@ export function PlayerCard({ p, club, onClick, selected, extra, size = "md" }) {
         {club && <div className="pc-crest"><Crest club={club} size={22} /></div>}
       </div>
       <div className="pc-face" aria-hidden="true">
-        <span>{initials(p.name)}</span>
+        <Face p={p} size={size === "sm" ? 46 : 64} />
       </div>
       <div className="pc-name">{p.name}</div>
       <div className="pc-stats">{STATS.map(k => <div key={k}><b>{p.stats[k]}</b><small>{k}</small></div>)}</div>
@@ -58,14 +106,14 @@ export function PlayerCard({ p, club, onClick, selected, extra, size = "md" }) {
 }
 
 // compact token on the pitch
-export function PitchToken({ p, slot, onClick, selected, home = true }) {
+export function PitchToken({ p, slot, onClick, selected, club, num }) {
   if (!p) return <button className="pt-tok empty" onClick={onClick}>{slot}</button>;
   const r = rating(p), t = tierOf(r);
   const fit = p.pos === slot;
   return (
     <button className={`pt-tok pc-${t}` + (selected ? " sel" : "") + (p.injured ? " inj" : "")} onClick={onClick} title={`${p.name} · ${p.pos} · ${r}`}>
-      <b>{r}</b>
-      <span className="nm">{p.name.split(" ").slice(-1)[0]}</span>
+      <div className="tok-shirt"><Shirt club={club} num={num} size={44} gk={slot === "GK"} /><em>{r}</em></div>
+      <span className="nm">{p.name.split(" ").slice(0, -1).join(" ").length <= 2 ? p.name.split(" ").slice(-1)[0] : p.name.split(" ")[0]}</span>
       <span className={"sl" + (fit ? "" : " off")}>{slot}{!fit && ` · ${p.pos}`}</span>
       <i style={{ width: `${p.cond ?? 90}%` }} />
     </button>
