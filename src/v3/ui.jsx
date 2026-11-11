@@ -76,8 +76,42 @@ export function Crest({ club, size = 44 }) {
 }
 function isLight(hex) { const h = hex.replace("#", ""); const n = h.length === 3 ? h.split("").map(c => c + c).join("") : h; const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16); return (r * 299 + g * 587 + b * 114) / 1000 > 165; }
 
-/* ---------- football shirt (club colours + pattern, shaded) ---------- */
+/* ---------- realistic kit: the white kit photo (ChatGPT) tinted with the club colours ----------
+   A colour/pattern layer is cut to the shirt shape with a CSS mask, then the photo is laid on top with
+   "multiply" (keeps folds and shadows) and "soft-light" (keeps highlights). */
+const patternBg = (c1, c2, pat) => pat === "vstrip" ? `repeating-linear-gradient(90deg,${c1} 0 11%,${c2} 11% 20%)`
+  : pat === "hstrip" ? `repeating-linear-gradient(180deg,${c1} 0 13%,${c2} 13% 22%)`
+  : pat === "half" ? `linear-gradient(90deg,${c1} 50%,${c2} 50%)` : c1;
 export function Shirt({ club, num, size = 40, gk = false }) {
+  const { c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
+  const body = gk ? "#ffcc4d" : c1;
+  const bg = gk ? body : patternBg(c1, c2, pat);
+  const ink = isLight(body) ? "#111" : "#fff";
+  return (
+    <div className="kitshirt" style={{ width: size, height: size * 1.09 }} aria-hidden="true">
+      <div className="kit-col" style={{ background: bg }} />
+      <img className="kit-mul" src="/art/shirt.webp" alt="" />
+      <img className="kit-soft" src="/art/shirt.webp" alt="" />
+      {num != null && <b style={{ color: ink, fontSize: size * .36 }}>{num}</b>}
+    </div>
+  );
+}
+export function Kit({ club, size = 140, gk = false }) {
+  const { c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
+  const shorts = gk ? "#1b1b1b" : (isLight(c1) === isLight(c2) || pat !== "solid") ? (isLight(c1) ? "#1d2333" : "#f2f2f2") : c2;
+  return (
+    <div className="kitfull" style={{ width: size }} aria-hidden="true">
+      <Shirt club={club} size={size} gk={gk} />
+      <div className="kitshorts" style={{ width: size, height: size * .59 }}>
+        <div className="kit-col" style={{ background: shorts, maskImage: "url(/art/shorts.webp)", WebkitMaskImage: "url(/art/shorts.webp)" }} />
+        <img className="kit-mul" src="/art/shorts.webp" alt="" />
+        <img className="kit-soft" src="/art/shorts.webp" alt="" />
+      </div>
+    </div>
+  );
+}
+/* (old vector shirt kept as a fallback name) */
+export function ShirtSVG({ club, num, size = 40, gk = false }) {
   const { id = "x", c1 = "#888", c2 = "#fff", pat = "solid" } = club || {};
   const body = gk ? "#ffcc4d" : c1, trim = gk ? "#1b1b1b" : c2;
   const k = `sh-${id}-${gk ? "g" : "o"}`;
@@ -192,3 +226,22 @@ export function PitchLines({ vertical = false }) {
 
 export const money = n => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)}K` : `${Math.round(n)}`);
 export const Form = ({ f = [] }) => <span className="form">{f.slice(-5).map((x, i) => <i key={i} className={x}>{x}</i>)}</span>;
+
+/* ---------- spinning football (corner logo) ---------- */
+export function SpinBall({ size = 42 }) {
+  const pent = (cx, cy, r, rot = 0) => {
+    const pts = [0, 1, 2, 3, 4].map(i => { const a = (rot - 90 + i * 72) * Math.PI / 180; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
+    return <polygon points={pts} fill="#111" />;
+  };
+  return (
+    <div className="spinball" style={{ width: size, height: size }} aria-hidden="true">
+      <svg viewBox="0 0 100 100" className="sb-rot">
+        <circle cx="50" cy="50" r="48" fill="#f4f4f4" />
+        {pent(50, 50, 13)}
+        {[0, 72, 144, 216, 288].map(a => { const r = a * Math.PI / 180 - Math.PI / 2; return <g key={a}>{pent(50 + 34 * Math.cos(r), 50 + 34 * Math.sin(r), 10, a + 36)}<line x1={50 + 13 * Math.cos(r)} y1={50 + 13 * Math.sin(r)} x2={50 + 25 * Math.cos(r)} y2={50 + 25 * Math.sin(r)} stroke="#222" strokeWidth="1.5" /></g>; })}
+        {[36, 108, 180, 252, 324].map(a => { const r = a * Math.PI / 180 - Math.PI / 2; return <line key={a} x1={50 + 18 * Math.cos(r)} y1={50 + 18 * Math.sin(r)} x2={50 + 47 * Math.cos(r)} y2={50 + 47 * Math.sin(r)} stroke="#333" strokeWidth="1.2" />; })}
+      </svg>
+      <i className="sb-shade" />
+    </div>
+  );
+}

@@ -4,7 +4,7 @@ import "./v3.css";
 import * as C from "../engine/career.js";
 import { simulate, rating, TACTICS } from "../engine/match.js";
 import { STADIA } from "../data.js";
-import { Crest, PlayerCard, PitchToken, PitchLines, money, Form, CountUp, Shirt } from "./ui.jsx";
+import { Crest, PlayerCard, PitchToken, PitchLines, money, Form, CountUp, Shirt, Kit, SpinBall } from "./ui.jsx";
 import MatchDay from "./MatchDay.jsx";
 import { bootMusic, menuMusic, gameMusic, isMuted, setMuted, onMute } from "./music.js";
 
@@ -36,7 +36,7 @@ export default function App3() {
   return (
     <div className="v3">
       <aside className="side">
-        <div className="brand"><div className="logo">FFM</div><div><b>FREEDOM</b><small>FOOTBALL MANAGER</small></div></div>
+        <div className="brand"><SpinBall size={44} /><div><b>FREEDOM</b><small>FOOTBALL MANAGER</small></div></div>
         <div className="myclub">
           <Crest club={club} size={42} />
           <div><b>{club.name}</b><small>{C.LEAGUES[career.league]}</small></div>
@@ -97,7 +97,7 @@ function Picker({ onStart }) {
       <div className="pick-mute"><MuteBtn /></div>
       <div className="pick-hero">
         <div className="pick-art" aria-hidden="true"><img src="/art/hero.webp" alt="" onError={e => (e.currentTarget.style.display = "none")} /></div>
-        <div className="kick">FREEDOM FOOTBALL MANAGER</div>
+        <div className="pick-brand"><SpinBall size={54} /><div className="kick">FREEDOM FOOTBALL MANAGER</div></div>
         <h1>You're not just a fan.<br /><em>You're in command.</em></h1>
         <p>Pick a club, set your tactics and watch every match unfold live — minute by minute. Win the league, climb the divisions, build a dynasty.</p>
         <div className="hero-stats"><div><b>{world.clubs.length}</b><span>CLUBS</span></div><div><b>{world.players.length.toLocaleString()}</b><span>PLAYERS</span></div><div><b>3</b><span>DIVISIONS</span></div></div>
@@ -139,7 +139,10 @@ function Home({ c, go }) {
   return (
     <div className="home">
       {c.seasonOver ? (
-        <div className="hero-card season-end"><div className="kick">SEASON {c.season} COMPLETE</div><h2>{club.name} finished {C.position(c)}{ord(C.position(c))}</h2><p>Start the next season from the top bar.</p></div>
+        <div className="hero-card season-end stadium">
+          <img className="se-trophy" src="/art/trophy.webp" alt="" />
+          <div><div className="kick">SEASON {c.season} COMPLETE</div><h2>{C.position(c) === 1 ? `CHAMPIONS! ${club.name}` : `${club.name} finished ${C.position(c)}${ord(C.position(c))}`}</h2><p>Start the next season from the top bar.</p></div>
+        </div>
       ) : opp && (
         <div className="hero-card nm stadium" style={{ "--h": (home ? club : opp).c1, "--a": (home ? opp : club).c1 }}>
           <div className="nm-top"><span className="kick">NEXT MATCH · WEEK {c.week}</span><span className="pill">{home ? "HOME" : "AWAY"}</span></div>
@@ -341,8 +344,9 @@ function Club({ c, set, say }) {
   const cost = nx ? nx.cost * 10 : 0;
   return (
     <div className="clubv">
-      <div className="hero-card cl-head" style={{ "--h": club.c1, "--a": club.c2 }}>
+      <div className="hero-card cl-head stadium" style={{ "--h": club.c1, "--a": club.c2 }}>
         <Crest club={club} size={110} />
+        <div className="cl-kits"><Kit club={club} size={120} /><Kit club={club} size={96} gk /></div>
         <div><div className="kick">MANAGER {c.manager.toUpperCase()}</div><h2>{club.name}</h2><p>{C.LEAGUES[c.league]} · Season {c.season}</p></div>
       </div>
       <div className="home-grid">
@@ -351,6 +355,10 @@ function Club({ c, set, say }) {
           <div className="stad"><b>{S.n}</b><span>{S.cap.toLocaleString()} seats · income {money(S.inc)} per home win</span></div>
           {nx ? <><div className="stad next"><b>Next: {nx.n}</b><span>{nx.cap.toLocaleString()} seats · income {money(nx.inc)}</span></div>
             <button className="btn primary" disabled={c.budget < cost} onClick={() => { set({ ...c, stadium: c.stadium + 1, budget: c.budget - cost, news: [{ t: Date.now(), icon: "🏗", text: `Stadium upgraded to ${nx.n}!` }, ...c.news] }); say(`Welcome to ${nx.n}!`); }}>Upgrade for {money(cost)}</button></> : <p className="muted">Maximum stadium reached.</p>}
+        </section>
+        <section className="card honours">
+          <div className="ch"><h3>🏆 Honours</h3></div>
+          <div className="hon"><img src="/art/trophy.webp" alt="League trophy" /><div><b>{(c.titles || 0)}×</b><span>{C.LEAGUES[c.league]} champions</span><small>Win the league to lift the Freedom trophy.</small></div></div>
         </section>
         <section className="card">
           <div className="ch"><h3>💰 Finances</h3></div>

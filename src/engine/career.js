@@ -120,6 +120,7 @@ export function finishWeek(c0, result) {
     const prize = Math.round((teams + 1 - pos) * tier / 1e5) * 1e5;
     c.budget += prize;
     c.news.unshift({ t: Date.now(), icon: pos === 1 ? "🏆" : "📋", text: pos === 1 ? `CHAMPIONS! ${club.name} win the ${LEAGUES[c.league]}! Prize money +${(prize / 1e6).toFixed(1)}M.` : `Season over — ${club.name} finish ${pos}${["st", "nd", "rd"][pos - 1] || "th"}. Prize money +${(prize / 1e6).toFixed(1)}M.` });
+    if (pos === 1) c.titles = (c.titles || 0) + 1;
     c.seasonOver = true;
   }
   return c;

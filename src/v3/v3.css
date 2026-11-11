@@ -318,3 +318,32 @@ select.inp option{background:#0e1528}
 .nm-vs span{animation:vsPulse 2.4s ease-in-out infinite}
 @keyframes vsPulse{50%{text-shadow:0 0 40px rgba(47,245,154,.8);transform:scale(1.06)}}
 .kpis div{transition:transform .2s}.kpis div:hover{transform:translateY(-3px)}
+
+/* ================= tinted kit photos ================= */
+.kitshirt,.kitshorts{position:relative;isolation:isolate;flex-shrink:0;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))}
+.kitshirt .kit-col,.kitshorts .kit-col{position:absolute;inset:0;-webkit-mask-image:url(/art/shirt.webp);mask-image:url(/art/shirt.webp);-webkit-mask-size:100% 100%;mask-size:100% 100%}
+.kitshorts .kit-col{-webkit-mask-size:100% 100%;mask-size:100% 100%}
+.kit-mul,.kit-soft{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.kit-mul{mix-blend-mode:multiply}.kit-soft{mix-blend-mode:soft-light;opacity:.55}
+.kitshirt b{position:absolute;left:0;right:0;top:34%;text-align:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.35);z-index:2}
+.kitfull{display:grid;justify-items:center}.kitfull .kitshorts{margin-top:-2%}
+
+/* spinning ball */
+.spinball{position:relative;border-radius:50%;flex-shrink:0;filter:drop-shadow(0 6px 12px rgba(0,0,0,.5))}
+.spinball svg{width:100%;height:100%;display:block;border-radius:50%}
+.sb-rot{animation:ballspin 3.2s linear infinite}
+@keyframes ballspin{to{transform:rotate(360deg)}}
+.sb-shade{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 32% 28%,rgba(255,255,255,.75),rgba(255,255,255,0) 32%),radial-gradient(circle at 50% 50%,transparent 55%,rgba(0,0,0,.45) 100%);pointer-events:none}
+.spinball:after{content:"";position:absolute;left:12%;right:12%;bottom:-14%;height:14%;border-radius:50%;background:rgba(0,0,0,.35);filter:blur(3px);animation:bounceSh 1.6s ease-in-out infinite}
+.brand .spinball,.pick-brand .spinball{animation:bounce 1.6s ease-in-out infinite}
+@keyframes bounce{50%{transform:translateY(-5px)}}@keyframes bounceSh{50%{transform:scale(.8);opacity:.6}}
+.pick-brand{display:flex;align-items:center;gap:12px}
+/* trophy + kits */
+.season-end{display:flex;align-items:center;gap:24px}
+.se-trophy{width:110px;height:160px;object-fit:cover;border-radius:16px;box-shadow:0 0 40px rgba(255,204,77,.35);animation:floaty2 5s ease-in-out infinite}
+@keyframes floaty2{50%{transform:translateY(-8px)}}
+.cl-head{position:relative}.cl-kits{margin-left:auto;display:flex;gap:16px;align-items:flex-end}
+.cl-kits .kitfull{animation:floaty2 6s ease-in-out infinite}.cl-kits .kitfull+.kitfull{animation-delay:-3s}
+.hon{display:flex;gap:16px;align-items:center}.hon img{width:90px;height:130px;object-fit:cover;border-radius:14px;box-shadow:0 0 30px rgba(255,204,77,.25)}
+.hon b{display:block;font:800 2.2rem 'Barlow Condensed';color:var(--gold)}.hon span{display:block;font-weight:700}.hon small{color:var(--mute)}
+@media (max-width:900px){.cl-head{flex-wrap:wrap}.cl-kits{margin-left:0}}
