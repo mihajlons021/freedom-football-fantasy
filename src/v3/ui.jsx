@@ -2,30 +2,75 @@
 import { useEffect, useRef, useState } from "react";
 import { rating } from "../engine/match.js";
 
-/* ---------- club crest (drawn from the club colours — no real logos) ---------- */
+/* ---------- club crest: generic badge in the club colours (never a copy of a real logo) ----------
+   Four badge families (shield, roundel, banner shield, modern), chosen per club so the league looks varied;
+   metallic rim, bevel and gloss for a realistic finish; stars for the biggest clubs. */
+const hashC = s => [...String(s)].reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381);
+const BALL = (cx, cy, r, col) => (
+  <g>
+    <circle cx={cx} cy={cy} r={r} fill="#fff" stroke={col} strokeWidth={r * .12} />
+    <path d={`M${cx} ${cy - r * .38} l${r * .36} ${r * .26} l${-r * .14} ${r * .42} h${-r * .44} l${-r * .14} ${-r * .42} Z`} fill={col} />
+  </g>
+);
 export function Crest({ club, size = 44 }) {
-  if (!club) return <div style={{ width: size, height: size * 1.15 }} />;
-  const { id, c1 = "#444", c2 = "#fff", pat = "solid", abbr = "?" } = club;
-  const light = isLight(c1);
-  const clip = `cr-${id}`;
+  if (!club) return <div style={{ width: size, height: size * 1.16 }} />;
+  const { id, c1 = "#444", c2 = "#fff", pat = "solid", abbr = "?", vM = 100 } = club;
+  const kind = ["shield", "round", "banner", "modern"][hashC(id) % 4];
+  const k = `cr-${id}`, light = isLight(c1), ink = light ? "#111" : "#fff";
+  const stars = vM >= 1200 ? 3 : vM >= 800 ? 2 : vM >= 500 ? 1 : 0;
+  const SH = {
+    shield: "M50 4 L92 16 L92 56 C92 86 72 104 50 112 C28 104 8 86 8 56 L8 16 Z",
+    banner: "M10 10 H90 V60 C90 88 70 104 50 112 C30 104 10 88 10 60 Z",
+    modern: "M18 6 H82 Q94 6 94 18 V74 Q94 96 50 112 Q6 96 6 74 V18 Q6 6 18 6 Z",
+  };
+  const fillPattern = (
+    <>
+      <rect width="100" height="116" fill={c1} />
+      {pat === "vstrip" && [0, 1, 2, 3].map(i => <rect key={i} x={12 + i * 22} y="0" width="11" height="116" fill={c2} />)}
+      {pat === "hstrip" && [0, 1, 2, 3].map(i => <rect key={i} x="0" y={24 + i * 22} width="100" height="10" fill={c2} />)}
+      {pat === "half" && <rect x="50" y="0" width="50" height="116" fill={c2} />}
+      {pat === "solid" && kind !== "banner" && <path d="M0 84 L100 64 L100 116 L0 116 Z" fill={c2} />}
+    </>
+  );
   return (
-    <svg viewBox="0 0 100 116" width={size} height={size * 1.16} style={{ display: "block", flexShrink: 0, filter: "drop-shadow(0 4px 10px rgba(0,0,0,.45))" }} aria-hidden="true">
+    <svg viewBox="0 0 100 116" width={size} height={size * 1.16} style={{ display: "block", flexShrink: 0, filter: "drop-shadow(0 4px 10px rgba(0,0,0,.5))" }} aria-hidden="true">
       <defs>
-        <clipPath id={clip}><path d="M50 4 L92 16 L92 56 C92 86 72 104 50 112 C28 104 8 86 8 56 L8 16 Z" /></clipPath>
-        <linearGradient id={clip + "g"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".28" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <linearGradient id={k + "m"} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff6d6" /><stop offset=".35" stopColor="#d9b25a" /><stop offset=".6" stopColor="#8a6a22" /><stop offset="1" stopColor="#f3d98a" /></linearGradient>
+        <linearGradient id={k + "g"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".38" /><stop offset=".45" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <radialGradient id={k + "v"} cx=".5" cy=".4" r=".7"><stop offset=".6" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".35" /></radialGradient>
+        {kind === "round" ? <clipPath id={k}><circle cx="50" cy="58" r="36" /></clipPath> : <clipPath id={k}><path d={SH[kind]} /></clipPath>}
       </defs>
-      <g clipPath={`url(#${clip})`}>
-        <rect width="100" height="116" fill={c1} />
-        {pat === "vstrip" && [0, 1, 2, 3].map(i => <rect key={i} x={12 + i * 22} y="0" width="11" height="116" fill={c2} opacity=".9" />)}
-        {pat === "hstrip" && [0, 1, 2, 3].map(i => <rect key={i} x="0" y={20 + i * 24} width="100" height="11" fill={c2} opacity=".9" />)}
-        {pat === "half" && <rect x="50" y="0" width="50" height="116" fill={c2} />}
-        {pat === "solid" && <path d="M0 78 L100 58 L100 116 L0 116 Z" fill={c2} opacity=".9" />}
-        <rect x="0" y="0" width="100" height="40" fill={`url(#${clip}g)`} />
-      </g>
-      <path d="M50 4 L92 16 L92 56 C92 86 72 104 50 112 C28 104 8 86 8 56 L8 16 Z" fill="none" stroke="rgba(255,255,255,.85)" strokeWidth="4" />
-      <path d="M50 10 L86 20 L86 56 C86 82 69 98 50 105 C31 98 14 82 14 56 L14 20 Z" fill="none" stroke="rgba(0,0,0,.25)" strokeWidth="1.5" />
-      <text x="50" y="62" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 24 : 30}
-        fill={light ? "#111" : "#fff"} stroke={light ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.45)"} strokeWidth="1.2" paintOrder="stroke">{abbr}</text>
+      {kind === "round" ? (
+        <>
+          <circle cx="50" cy="58" r="48" fill={`url(#${k}m)`} />
+          <circle cx="50" cy="58" r="44" fill={c2 === "#fff" || isLight(c2) ? "#141a2e" : c2} />
+          <g clipPath={`url(#${k})`}>{fillPattern}<rect width="100" height="116" fill={`url(#${k}v)`} /><rect width="100" height="60" fill={`url(#${k}g)`} /></g>
+          <circle cx="50" cy="58" r="36" fill="none" stroke={`url(#${k}m)`} strokeWidth="2.5" />
+          {[...Array(stars)].map((_, i) => <text key={i} x={40 + i * 10 - (stars - 1) * 5 + 5} y="21" textAnchor="middle" fontSize="9" fill="#ffd76a">★</text>)}
+          {BALL(50, 46, 9, light ? "#111" : c1)}
+          <text x="50" y="80" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 17 : 21} fill={ink} stroke={light ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.5)"} strokeWidth="1" paintOrder="stroke">{abbr}</text>
+        </>
+      ) : (
+        <>
+          <path d={SH[kind]} transform="translate(50 58) scale(1.08) translate(-50 -58)" fill={`url(#${k}m)`} />
+          <g clipPath={`url(#${k})`}>
+            {fillPattern}
+            {kind === "banner" && <><rect x="0" y="10" width="100" height="30" fill={light ? "#141a2e" : "#fff"} /><rect x="0" y="40" width="100" height="3" fill={`url(#${k}m)`} /></>}
+            <rect width="100" height="116" fill={`url(#${k}v)`} /><rect width="100" height="56" fill={`url(#${k}g)`} />
+          </g>
+          <path d={SH[kind]} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="1.2" />
+          {[...Array(stars)].map((_, i) => <text key={i} x={50 + (i - (stars - 1) / 2) * 11} y={kind === "banner" ? 8 : 3} dy="6" textAnchor="middle" fontSize="10" fill="#ffd76a" stroke="#6b4f10" strokeWidth=".4">★</text>)}
+          {kind === "banner"
+            ? <>
+                <text x="50" y="33" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 18 : 22} fill={light ? "#fff" : "#141a2e"}>{abbr}</text>
+                {BALL(50, 72, 13, light ? "#111" : c1)}
+              </>
+            : <>
+                {BALL(50, kind === "modern" ? 36 : 38, 10, light ? "#111" : c1)}
+                <text x="50" y="72" textAnchor="middle" fontFamily="'Barlow Condensed',sans-serif" fontWeight="800" fontSize={abbr.length > 3 ? 22 : 27} fill={ink} stroke={light ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.5)"} strokeWidth="1.2" paintOrder="stroke">{abbr}</text>
+              </>}
+        </>
+      )}
     </svg>
   );
 }
