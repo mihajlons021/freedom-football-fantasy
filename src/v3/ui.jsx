@@ -51,7 +51,7 @@ export function Crest({ club, size = 44 }) {
         {/* real lighting on the rim = raised metal bevel */}
         <filter id={k + "b"} x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="bl" />
-          <feSpecularLighting in="bl" surfaceScale="4" specularConstant="1.1" specularExponent="22" lightingColor="#fff" result="sp"><feDistantLight azimuth="225" elevation="42" /></feSpecularLighting>
+          <feSpecularLighting in="bl" surfaceScale="6" specularConstant="1.35" specularExponent="18" lightingColor="#fff" result="sp"><feDistantLight azimuth="225" elevation="38" /></feSpecularLighting>
           <feComposite in="sp" in2="SourceAlpha" operator="in" result="spi" />
           <feComposite in="SourceGraphic" in2="spi" operator="arithmetic" k1="0" k2="1" k3=".75" k4="0" />
         </filter>
@@ -63,9 +63,11 @@ export function Crest({ club, size = 44 }) {
         <clipPath id={k + "c"}><path d={outer} transform={sc(.84)} /></clipPath>
       </defs>
       <g filter={`url(#${k}d)`}>
+        {/* extruded edge: the badge has real thickness, darker as it goes down */}
+        {[5, 4, 3, 2, 1].map(dy => <path key={dy} d={outer} transform={`translate(${dy * .35} ${dy * 1.05})`} fill={dy > 3 ? "#3d2b07" : dy > 1 ? "#6b4c12" : "#9c7424"} />)}
         {/* metal rim with lit bevel */}
         <path d={outer} fill={`url(#${k}m)`} filter={`url(#${k}b)`} />
-        <path d={outer} transform={sc(.9)} fill={`url(#${k}m2)`} />
+        <path d={outer} transform={sc(.9)} fill={`url(#${k}m2)`} filter={`url(#${k}b)`} />
         {/* enamel field */}
         <g clipPath={`url(#${k}c)`}>
           {pattern}
@@ -114,8 +116,8 @@ export function Shirt({ club, num, size = 40, gk = false }) {
   return (
     <div className="kitshirt" style={{ width: size, height: size * 1.09 }} aria-hidden="true">
       <div className="kit-col" style={{ background: bg }} />
-      <img className="kit-mul" src="/art/shirt.webp" alt="" />
-      <img className="kit-soft" src="/art/shirt.webp" alt="" />
+      <img className="kit-mul" src="/art/shirt.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />
+      <img className="kit-soft" src="/art/shirt.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />
       {num != null && <b style={{ color: ink, fontSize: size * .36 }}>{num}</b>}
     </div>
   );
@@ -128,8 +130,8 @@ export function Kit({ club, size = 140, gk = false }) {
       <Shirt club={club} size={size} gk={gk} />
       <div className="kitshorts" style={{ width: size, height: size * .59 }}>
         <div className="kit-col" style={{ background: shorts, maskImage: "url(/art/shorts.webp)", WebkitMaskImage: "url(/art/shorts.webp)" }} />
-        <img className="kit-mul" src="/art/shorts.webp" alt="" />
-        <img className="kit-soft" src="/art/shorts.webp" alt="" />
+        <img className="kit-mul" src="/art/shorts.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />
+        <img className="kit-soft" src="/art/shorts.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />
       </div>
     </div>
   );

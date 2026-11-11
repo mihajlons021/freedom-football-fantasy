@@ -142,7 +142,7 @@ function Home({ c, go, open }) {
     <div className="home">
       {c.seasonOver ? (
         <div className="hero-card season-end stadium">
-          <img className="se-trophy" src="/art/trophy.webp" alt="" />
+          <img className="se-trophy" src="/art/trophy.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} />
           <div><div className="kick">SEASON {c.season} COMPLETE</div><h2>{C.position(c) === 1 ? `CHAMPIONS! ${club.name}` : `${club.name} finished ${C.position(c)}${ord(C.position(c))}`}</h2><p>Start the next season from the top bar.</p></div>
         </div>
       ) : opp && (
@@ -420,7 +420,7 @@ function Club({ c, set, say }) {
         </section>
         <section className="card honours">
           <div className="ch"><h3>🏆 Honours</h3></div>
-          <div className="hon"><img src="/art/trophy.webp" alt="League trophy" /><div><b>{(c.titles || 0)}×</b><span>{C.LEAGUES[c.league]} champions</span><small>Win the league to lift the Freedom trophy.</small></div></div>
+          <div className="hon"><img src="/art/trophy.webp" alt="" onError={e => (e.currentTarget.style.visibility = "hidden")} /><div><b>{(c.titles || 0)}×</b><span>{C.LEAGUES[c.league]} champions</span><small>Win the league to lift the Freedom trophy.</small></div></div>
         </section>
         <section className="card">
           <div className="ch"><h3>💰 Finances</h3></div>
